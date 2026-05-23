@@ -1,0 +1,97 @@
+{
+  "entities": {
+    "DailyReport": {
+      "title": "Daily Report",
+      "description": "A daily report for a specific task or supervisor.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unified Firestore ID" },
+        "legacyId": { "type": "number", "description": "Original numeric ID" },
+        "date": { "type": "string", "format": "date", "description": "Report date YYYY-MM-DD" },
+        "sup": { "type": "string", "description": "Supervisor name" },
+        "wbs": { "type": "string", "description": "WBS name" },
+        "tipo": { "type": "string", "description": "Work type" },
+        "detalle": { "type": "string", "description": "Details/Observations" },
+        "workers": { "type": "array", "description": "List of workers names" },
+        "hours": { "type": "number", "description": "Total HH" },
+        "status": { "type": "string", "enum": ["pendiente", "ejecucion", "listo"] },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["date", "sup", "wbs", "tipo"]
+    },
+    "ExtraHours": {
+      "title": "Extra Hours",
+      "description": "Extra hours report for a worker.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "date": { "type": "string" },
+        "workerName": { "type": "string" },
+        "hours": { "type": "number" }
+      },
+      "required": ["date", "workerName", "hours"]
+    },
+    "License": {
+      "title": "License",
+      "description": "Worker license or permission.",
+      "type": "object",
+      "properties": {
+        "nombre": { "type": "string" },
+        "rut": { "type": "string" },
+        "cargo": { "type": "string" },
+        "grupo": { "type": "string" },
+        "desde": { "type": "string" },
+        "hasta": { "type": "string" },
+        "dias": { "type": "number" }
+      },
+      "required": ["nombre", "desde", "hasta"]
+    },
+    "ProjectConfig": {
+      "title": "Project Configuration",
+      "description": "Global project data like schedule and personnel.",
+      "type": "object",
+      "properties": {
+        "scheduleData": { "type": "object" },
+        "personnelData": { "type": "object" },
+        "updatedAt": { "type": "string" }
+      }
+    },
+    "Worker": {
+      "title": "Worker",
+      "description": "Worker details and shift status.",
+      "type": "object",
+      "properties": {
+        "nombre": { "type": "string" },
+        "rut": { "type": "string" },
+        "cargo": { "type": "string" },
+        "grupo": { "type": "string" },
+        "jornada": { "type": "string" },
+        "hh": { "type": "number" },
+        "hhe": { "type": "number" },
+        "estado": { "type": "string", "enum": ["Turno", "Descanso", "Sin Turno"] }
+      }
+    }
+  },
+  "firestore": {
+    "reports": {
+      "schema": "DailyReport",
+      "description": "Collection of daily labor reports."
+    },
+    "workers": {
+      "schema": "Worker",
+      "description": "Collection of worker profiles."
+    },
+    "extraHours": {
+      "schema": "ExtraHours",
+      "description": "Collection of extra hours reports."
+    },
+    "licenses": {
+      "schema": "License",
+      "description": "Collection of personnel licenses."
+    },
+    "config": {
+      "schema": "ProjectConfig",
+      "description": "Singleton-like collection for project configuration."
+    }
+  }
+}

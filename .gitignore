@@ -1,0 +1,26 @@
+node_modules/
+build/
+dist/
+coverage/
+.DS_Store
+*.log
+
+# Variables de entorno (nunca commitear)
+.env*
+!.env.example
+
+# Datos locales del antiguo /api/state (eliminado)
+db.json
+
+# Credenciales de Firebase Admin / Google Cloud
+service-account-credentials.json
+firebase-service-account*.json
+*-service-account*.json
+
+# Backups, dumps y zips no deben estar en git
+*.zip
+dump*.txt
+
+# Editor local
+.vscode/
+.idea/
