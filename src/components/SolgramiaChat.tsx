@@ -37,6 +37,37 @@ export default function SolgramiaChat() {
     updateState({ chatHistory: newHistory });
     setIsLoading(true);
 
+    // ----- Modo DEMO: respuesta local sin /api/chat ------------------
+    if (import.meta.env.VITE_DEMO_MODE === 'true') {
+      const recent = (state.dailyReports || []).slice(-3).reverse();
+      const onDuty = state.personnelData?.onDutyCount ?? 0;
+      const total  = state.personnelData?.totalWorkers ?? 0;
+      const avance = state.scheduleData?.stats
+        ? Math.round(((state.scheduleData.stats.sumActualHrs || 0) /
+            Math.max(state.scheduleData.stats.sumTotalHrs || 1, 1)) * 100)
+        : 0;
+
+      const canned = [
+        `Según los reportes diarios actuales, el avance físico real está en **${avance}%** (curva acumulada).\n\nLa actividad crítica esta semana es **${state.scheduleData?.tasks?.find(t => t.status === 'TK_Active')?.name || 'la tarea activa'}**.`,
+        `Hoy hay **${onDuty} de ${total}** trabajadores en turno.\nLa rotación es **${state.shiftConfig?.cycleDays || 14}×${state.shiftConfig?.cycleDays || 14}** y el grupo activo está definido por la fecha base (${state.shiftConfig?.anchorDate || 'sin definir'}).`,
+        recent.length
+          ? `Últimos reportes diarios:\n\n${recent.map(r => `• ${r.tipo} — ${r.hours} HH (${r.status})`).join('\n')}`
+          : 'Aún no hay reportes diarios registrados.',
+        `Tu pregunta fue: "${userMsg}".\n\n_(Estás en la vista demo. La respuesta es generada localmente con datos del navegador, sin llamar a Gemini.)_`,
+      ];
+      const reply = canned[Math.floor(Math.random() * canned.length)];
+
+      await new Promise(r => setTimeout(r, 600));
+      const modelEntry = {
+        role: 'model' as const,
+        message: reply,
+        timestamp: new Date().toISOString(),
+      };
+      updateState({ chatHistory: [...newHistory, modelEntry] });
+      setIsLoading(false);
+      return;
+    }
+
     try {
       // Optimize context: Only send essential data to avoid hitting payload limits
       const appStateContext = {

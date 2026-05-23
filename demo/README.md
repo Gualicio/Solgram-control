@@ -1,39 +1,63 @@
-# Vista previa interactiva
+# Vista previa de Solgram Control
 
-`preview.html` es un **demo offline 100% autocontenido** de la interfaz de Solgram Control. Está pensado para que cualquier persona pueda hacerse una idea de cómo se ve y se siente la app sin tener que instalar nada ni configurar Firebase.
+Hay **dos versiones** de la vista previa, ambas funcionan offline (no necesitan Firebase ni servidor).
 
-## Cómo abrirlo
+## 🟢 Versión completa (la app real en modo demo)
 
-### Opción 1 — Doble clic
-1. Descarga este archivo (botón "Raw" en GitHub o clona el repo).
-2. Hazle doble clic. Se abrirá en tu navegador por defecto.
+Es la app React entera, compilada con `VITE_DEMO_MODE=true`. Reemplaza Firebase por mocks en memoria + localStorage, así puedes:
 
-### Opción 2 — Servirlo localmente
+- Crear, editar y borrar reportes diarios → se guardan en tu navegador.
+- Importar archivos `.xer` de Primavera P6 (la importación corre 100% en el cliente).
+- Editar el personal, asignar grupos y estados.
+- Subir fotos a los reportes (se guardan como base64 en localStorage).
+- Cambiar entre rol **Supervisor** y **Administrador**.
+- Conversar con Solgramia (responde con datos reales del browser, sin Gemini).
+- Recargar la página y ver que todo persiste.
+
+### Cómo verla
+
+**En línea (después del primer push a `main`):**
+```
+https://gualicio.github.io/Solgram-control/
+```
+Para activarlo una vez: en el repo de GitHub, **Settings → Pages → Source: "GitHub Actions"**. El workflow `.github/workflows/preview.yml` construye y publica automáticamente.
+
+**En tu computador:**
 ```bash
-npx serve demo
-# luego abre http://localhost:3000/preview.html
+npm install
+npm run dev:demo                 # abre http://localhost:5173
+# o
+npm run preview:demo             # build + preview en :4173
 ```
 
-### Opción 3 — En línea (GitHub Pages)
-Si el workflow `.github/workflows/preview.yml` está activo y GitHub Pages habilitado en el repo, queda publicado en:
+### Cómo funciona internamente
+
+- `src/demo/firestore-mock.ts` — Firestore en memoria con persistencia en `localStorage` (`solgram-demo-firestore-v1`).
+- `src/demo/auth-mock.ts` — Auth simulada. Cualquier email/contraseña entra como admin; "Supervisor" entra anónimo.
+- `src/demo/seed.ts` — datos iniciales (12 trabajadores, 5 reportes, schedule con WBS, licencias, horas extra).
+- `vite.config.ts` aliasea `firebase/firestore`, `firebase/auth`, `firebase/app` y `firebase/analytics` a esos mocks cuando se construye con `VITE_DEMO_MODE=true`.
+- `App.tsx` muestra un banner naranja "Modo demo · datos locales" arriba al centro y un botón **(reset)** para volver al estado inicial.
+
+## 🟡 Versión "vistazo rápido" (preview.html)
+
+`preview.html` es un único archivo HTML con datos completamente estáticos. No es la app real, es una maqueta visual liviana. Útil cuando solo quieres ver el estilo sin esperar la descarga del bundle.
+
 ```
 https://gualicio.github.io/Solgram-control/preview.html
 ```
 
-## Qué incluye
+O bien doble clic sobre `demo/preview.html` desde tu disco.
 
-- **Pantalla de Login** con dos roles (Supervisor / Administrador).
-- **Dashboard** con KPIs, curva de avance y actividad reciente.
-- **Carta Gantt** con barras y estados.
-- **Calendario operativo** con turnos 14×14.
-- **Reportes diarios** (tabla con acciones distintas según rol).
-- **Control de Personal** con grupos y estados.
-- **Chat de Solgramia** con respuestas simuladas.
-- **Modo claro/oscuro**.
+---
 
-## Qué NO incluye
+## Diferencia con la app de producción
 
-- No hay backend real: todos los datos son de muestra (estáticos).
-- El chat NO consulta a Gemini, devuelve respuestas predefinidas.
-- Los formularios no guardan nada (es una vista previa visual).
-- Cualquier email/contraseña funciona en el login del admin (es demo).
+| | preview.html | demo bundle | producción |
+|---|---|---|---|
+| Backend | ❌ | mock | Firebase real |
+| Persiste cambios | ❌ | localStorage | Firestore |
+| Importar XER | ❌ | ✅ | ✅ |
+| Editar reportes | ❌ | ✅ | ✅ |
+| Chat Solgramia | canned | canned (datos del state) | Gemini real |
+| Login email/password | demo | demo | Firebase Auth |
+| Drive / Calendar | ❌ | ❌ (necesita OAuth real) | ✅ |

@@ -1,20 +1,26 @@
 name: Publish demo preview to GitHub Pages
 
-# Publica demo/preview.html en GitHub Pages para tener una URL pública
-# de la vista previa interactiva (sin Firebase, datos de ejemplo).
+# Construye la app React con VITE_DEMO_MODE=true (Firebase reemplazado
+# por mocks en memoria + localStorage) y la publica en GitHub Pages.
 #
-# Para que funcione:
-#   1. En la pestaña Settings > Pages del repo, en "Source" elige
-#      "GitHub Actions".
+# Para que funcione la primera vez:
+#   1. Settings > Pages del repo, en "Source" elige "GitHub Actions".
 #   2. Mergea el PR (o haz push a main).
-#   3. La URL quedará en:
+#   3. La URL queda en:
 #      https://<owner>.github.io/<repo>/
 
 on:
   push:
     branches: [main]
     paths:
+      - "src/**"
       - "demo/**"
+      - "public/**"
+      - "index.html"
+      - "package.json"
+      - "package-lock.json"
+      - "vite.config.ts"
+      - "tsconfig.json"
       - ".github/workflows/preview.yml"
   workflow_dispatch:
 
@@ -33,17 +39,30 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Prepare site
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Build demo bundle
+        env:
+          VITE_DEMO_MODE: "true"
+          BASE_URL: "/${{ github.event.repository.name }}/"
+        run: npm run build
+
+      - name: Add quick-glance preview alongside the SPA
         run: |
-          mkdir -p _site
-          cp demo/preview.html _site/index.html
-          cp demo/preview.html _site/preview.html
-          cp -r demo/README.md _site/README.md || true
+          # Mantenemos el HTML standalone como /preview.html para los que
+          # solo quieran un vistazo rápido sin descargarse el bundle.
+          cp demo/preview.html dist/preview.html
 
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: _site
+          path: dist
 
   deploy:
     needs: build

@@ -419,8 +419,39 @@ export default function App() {
   return (
     <ErrorBoundary>
       <AppProvider>
+        <DemoBanner />
         <AppContent />
       </AppProvider>
     </ErrorBoundary>
+  );
+}
+
+/**
+ * Banner pequeño en la esquina superior cuando se compila con
+ * VITE_DEMO_MODE=true.  Recuerda al usuario que los datos son simulados.
+ */
+function DemoBanner() {
+  if (import.meta.env.VITE_DEMO_MODE !== 'true') return null;
+  return (
+    <div className="fixed top-2 left-1/2 -translate-x-1/2 z-[300] pointer-events-none">
+      <div className="px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest bg-amber-500 text-black shadow-lg shadow-amber-500/30 flex items-center gap-1.5 pointer-events-auto">
+        <span className="w-1.5 h-1.5 bg-black rounded-full animate-pulse" />
+        Modo demo · datos locales
+        <button
+          onClick={() => {
+            if (confirm('¿Restablecer los datos demo a su estado inicial?')) {
+              localStorage.removeItem('solgram-demo-firestore-v1');
+              localStorage.removeItem('solgram-demo-firestore-seeded-v1');
+              localStorage.removeItem('solgram_local_state');
+              window.location.reload();
+            }
+          }}
+          className="ml-1 underline-offset-2 hover:underline"
+          title="Restablecer datos de la demo"
+        >
+          (reset)
+        </button>
+      </div>
+    </div>
   );
 }

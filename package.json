@@ -5,10 +5,13 @@
   "type": "module",
   "scripts": {
     "dev": "tsx server.ts",
+    "dev:demo": "VITE_DEMO_MODE=true vite",
     "build": "vite build",
+    "build:demo": "VITE_DEMO_MODE=true vite build",
     "build:cloudrun": "vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
     "start:cloudrun": "NODE_ENV=production node dist/server.cjs",
     "preview": "vite preview",
+    "preview:demo": "VITE_DEMO_MODE=true vite build && vite preview --port 4173",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
     "bootstrap-admin": "node scripts/bootstrap-admin.cjs",
