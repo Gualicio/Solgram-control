@@ -1,0 +1,663 @@
+<!doctype html>
+<html lang="es" class="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Solgram Control · Vista Previa</title>
+    <meta
+      name="description"
+      content="Vista previa interactiva (offline, sin backend) de Solgram Control."
+    />
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              brand: {
+                bg: "#0d1117",
+                panel: "#161b22",
+                border: "#30363d",
+                soft: "#21262d",
+                amber: "#ffb703",
+                blue: "#0f6fff",
+              },
+            },
+          },
+        },
+      };
+    </script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+      :root { color-scheme: dark; }
+      html.dark body { background: #0d1117; color: #e6edf7; }
+      body {
+        background: #f8fafc; color: #0f172a;
+        font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Inter", sans-serif;
+      }
+      .scroll::-webkit-scrollbar { height: 8px; width: 8px; }
+      .scroll::-webkit-scrollbar-thumb { background: rgba(127,127,127,.3); border-radius: 8px; }
+      .fade-in { animation: fade .25s ease-out both; }
+      @keyframes fade { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+      .pop-in { animation: pop .18s ease-out both; }
+      @keyframes pop { from { opacity: 0; transform: scale(.96); } to { opacity: 1; transform: scale(1); } }
+      .typing::after { content: "▍"; animation: blink 1s step-end infinite; }
+      @keyframes blink { 50% { opacity: 0; } }
+    </style>
+  </head>
+  <body class="min-h-screen">
+    <!-- ========== LOGIN ========== -->
+    <div id="login-screen" class="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div class="max-w-md w-full p-8 rounded-3xl border shadow-2xl pop-in dark:bg-brand-panel/90 dark:border-brand-border bg-white border-gray-200">
+        <div class="text-center mb-8">
+          <div class="inline-flex p-3 rounded-2xl bg-blue-500/10 mb-4 text-brand-blue">
+            <i data-lucide="shield-check" class="w-8 h-8"></i>
+          </div>
+          <h1 class="text-2xl font-black mb-2 dark:text-white text-gray-900 uppercase tracking-tight">Solgram Control</h1>
+          <p class="text-xs uppercase tracking-widest text-gray-500 font-bold">Vista Previa · datos de ejemplo</p>
+        </div>
+
+        <div id="login-selection" class="space-y-3">
+          <button data-role="worker" class="role-btn group w-full flex items-center gap-4 p-5 rounded-2xl border text-left transition-all dark:bg-brand-soft dark:border-brand-border dark:hover:border-orange-500/50 bg-white border-gray-200 hover:border-orange-500/50">
+            <div class="p-3 rounded-xl bg-orange-500/10 text-orange-500 group-hover:scale-110 transition-transform">
+              <i data-lucide="user-circle" class="w-6 h-6"></i>
+            </div>
+            <div class="flex-1">
+              <h3 class="text-sm font-bold uppercase dark:text-white text-gray-900">Supervisor</h3>
+              <p class="text-[10px] text-gray-500 font-medium">Ver reportes y actividades</p>
+            </div>
+            <i data-lucide="arrow-right" class="w-4 h-4 text-gray-500"></i>
+          </button>
+
+          <button data-role="admin" class="role-btn group w-full flex items-center gap-4 p-5 rounded-2xl border text-left transition-all dark:bg-brand-soft dark:border-brand-border dark:hover:border-blue-500/50 bg-white border-gray-200 hover:border-blue-500/50">
+            <div class="p-3 rounded-xl bg-blue-500/10 text-blue-500 group-hover:scale-110 transition-transform">
+              <i data-lucide="shield-check" class="w-6 h-6"></i>
+            </div>
+            <div class="flex-1">
+              <h3 class="text-sm font-bold uppercase dark:text-white text-gray-900">Administrador de Obra</h3>
+              <p class="text-[10px] text-gray-500 font-medium">Acceso total a la información</p>
+            </div>
+            <i data-lucide="arrow-right" class="w-4 h-4 text-gray-500"></i>
+          </button>
+        </div>
+
+        <div id="admin-form" class="hidden space-y-4 fade-in">
+          <div class="relative">
+            <i data-lucide="mail" class="w-4 h-4 absolute inset-y-0 left-4 my-auto text-gray-500"></i>
+            <input id="admin-email" type="email" placeholder="Cualquier email (es demo)"
+              class="w-full pl-11 pr-4 py-3.5 rounded-2xl border text-sm focus:outline-none dark:bg-[#0d1117] dark:border-brand-border dark:text-white bg-gray-50 border-gray-200 text-gray-900 focus:border-blue-500" />
+          </div>
+          <div class="relative">
+            <i data-lucide="lock" class="w-4 h-4 absolute inset-y-0 left-4 my-auto text-gray-500"></i>
+            <input id="admin-pwd" type="password" placeholder="Cualquier clave"
+              class="w-full pl-11 pr-4 py-3.5 rounded-2xl border text-sm focus:outline-none dark:bg-[#0d1117] dark:border-brand-border dark:text-white bg-gray-50 border-gray-200 text-gray-900 focus:border-blue-500" />
+          </div>
+          <p class="text-[10px] text-center text-amber-500 font-bold uppercase tracking-wider">
+            En la demo cualquier valor te deja entrar
+          </p>
+          <div class="flex gap-3 pt-1">
+            <button id="back-from-admin" class="flex-1 py-3.5 rounded-2xl font-bold text-xs uppercase tracking-wider border dark:border-brand-border dark:text-gray-400 border-gray-200 text-gray-500">Atrás</button>
+            <button id="enter-admin" class="flex-[3] bg-brand-blue text-white py-3.5 rounded-2xl font-black text-xs uppercase tracking-widest shadow-lg shadow-blue-500/20">Ingresar</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ========== MAIN APP ========== -->
+    <div id="main-app" class="hidden">
+      <header class="sticky top-0 z-40 dark:bg-brand-panel/80 dark:border-brand-border bg-white/90 border-gray-200 border-b backdrop-blur">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between gap-3">
+          <div class="flex items-center gap-2.5">
+            <div class="w-9 h-9 rounded-xl bg-brand-blue text-white flex items-center justify-center">
+              <i data-lucide="hard-hat" class="w-5 h-5"></i>
+            </div>
+            <div>
+              <p class="text-[10px] font-bold uppercase tracking-widest text-gray-500">Suite Unificada</p>
+              <h1 class="text-sm font-black uppercase tracking-tight">Solgram Control</h1>
+            </div>
+          </div>
+
+          <nav id="tabs" class="hidden md:flex items-center gap-1 text-xs"></nav>
+
+          <div class="flex items-center gap-2">
+            <span id="role-pill" class="hidden sm:inline-flex px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border"></span>
+            <button id="theme-toggle" class="p-2 rounded-xl border dark:border-brand-border border-gray-200 hover:bg-black/5 dark:hover:bg-white/10" title="Cambiar tema">
+              <i data-lucide="sun" class="w-4 h-4"></i>
+            </button>
+            <button id="logout" class="p-2 rounded-xl border dark:border-brand-border border-gray-200 hover:bg-red-500/10 hover:text-red-500" title="Cerrar sesión">
+              <i data-lucide="log-out" class="w-4 h-4"></i>
+            </button>
+          </div>
+        </div>
+        <div id="tabs-mobile" class="md:hidden flex items-center gap-1 overflow-x-auto px-3 pb-2 scroll text-[11px]"></div>
+      </header>
+
+      <main class="max-w-7xl mx-auto px-4 sm:px-6 py-6">
+        <div id="tab-content" class="space-y-6"></div>
+      </main>
+
+      <button id="chat-toggle" class="fixed bottom-6 right-6 p-4 rounded-full shadow-2xl bg-brand-amber text-black hover:scale-110 transition-transform z-30">
+        <i data-lucide="message-square" class="w-6 h-6"></i>
+      </button>
+
+      <div id="chat-panel" class="hidden fixed bottom-24 right-6 w-[350px] max-w-[calc(100vw-3rem)] h-[480px] rounded-2xl shadow-2xl flex flex-col overflow-hidden z-30 border dark:bg-[#11151c] dark:border-[#1f2a44] bg-white border-gray-200 fade-in">
+        <div class="px-4 py-3 flex items-center justify-between border-b dark:bg-[#1a2440] dark:border-[#1f2a44] bg-gray-50 border-gray-200">
+          <div class="flex items-center gap-2">
+            <div class="p-1.5 rounded-lg bg-brand-amber text-black"><i data-lucide="bot" class="w-4 h-4"></i></div>
+            <div>
+              <h3 class="font-bold text-sm">Solgramia</h3>
+              <p class="text-[10px] text-gray-400">Asistente IA · DEMO</p>
+            </div>
+          </div>
+          <button id="chat-close" class="p-2 rounded-lg hover:bg-white/10"><i data-lucide="x" class="w-4 h-4"></i></button>
+        </div>
+        <div id="chat-messages" class="flex-1 overflow-y-auto p-4 space-y-3 scroll text-sm"></div>
+        <form id="chat-form" class="p-3 border-t flex gap-2 items-end dark:border-[#1f2a44] border-gray-200">
+          <input id="chat-input" type="text" placeholder="Pregúntale a Solgramia..."
+            class="flex-1 rounded-xl px-3 py-2 text-sm focus:outline-none dark:bg-[#1a2440] dark:text-white dark:border-[#1f2a44] border bg-gray-50 border-gray-200 text-gray-900" />
+          <button type="submit" class="p-2 rounded-xl bg-brand-amber text-black"><i data-lucide="send" class="w-4 h-4"></i></button>
+        </form>
+      </div>
+    </div>
+
+    <script>
+      // ===== Sample data =================================================
+      const SAMPLE = {
+        kpis: [
+          { label: "HH Planificadas", value: "12.480", sub: "Plan total acumulado",   icon: "clock",        tone: "blue"   },
+          { label: "HH Ejecutadas",   value: "9.812",  sub: "Reportadas a la fecha",  icon: "activity",     tone: "amber"  },
+          { label: "Avance Físico",   value: "78,6%",  sub: "Curva real vs plan",     icon: "trending-up",  tone: "green"  },
+          { label: "Personal Turno",  value: "47",     sub: "Hoy · grupos A y C",     icon: "users",        tone: "purple" },
+        ],
+        recentReports: [
+          { date: "2026-05-22", sup: "C. Pérez",     tipo: "Hormigonado losa nivel 3", wbs: "Estructura · Edif. A", status: "listo",     hours: 144 },
+          { date: "2026-05-22", sup: "M. Soto",      tipo: "Instalación enfierradura", wbs: "Estructura · Edif. A", status: "ejecucion", hours: 120 },
+          { date: "2026-05-21", sup: "R. González",  tipo: "Excavación zanja Nº 4",    wbs: "Movimiento Tierra",    status: "listo",     hours:  96 },
+          { date: "2026-05-21", sup: "C. Pérez",     tipo: "Aseguramiento de losa",    wbs: "Estructura · Edif. B", status: "listo",     hours:  84 },
+          { date: "2026-05-20", sup: "M. Soto",      tipo: "Encofrado pilares P-12",   wbs: "Estructura · Edif. B", status: "ejecucion", hours: 132 },
+        ],
+        ganttTasks: [
+          { name: "Movimiento de tierra", wbs: "Mov. Tierra",          startCol:  0, span: 6, status: "listo"     },
+          { name: "Fundaciones",          wbs: "Estructura · Edif. A", startCol:  4, span: 6, status: "listo"     },
+          { name: "Estructura Edif. A",   wbs: "Estructura · Edif. A", startCol:  8, span: 9, status: "ejecucion" },
+          { name: "Estructura Edif. B",   wbs: "Estructura · Edif. B", startCol: 11, span: 8, status: "ejecucion" },
+          { name: "Instalaciones MEP",    wbs: "Instalaciones",        startCol: 16, span: 7, status: "pendiente" },
+          { name: "Terminaciones",        wbs: "Terminaciones",        startCol: 20, span: 4, status: "pendiente" },
+        ],
+        personnel: [
+          { nombre: "Carlos Pérez",      rut: "12.345.678-9", cargo: "Supervisor",          grupo: "A", estado: "Turno",    hh: 312 },
+          { nombre: "Marcela Soto",      rut: "13.456.789-K", cargo: "Capataz",             grupo: "A", estado: "Turno",    hh: 288 },
+          { nombre: "Rodrigo González",  rut: "14.567.890-1", cargo: "Supervisor",          grupo: "C", estado: "Turno",    hh: 264 },
+          { nombre: "Felipe Núñez",      rut: "15.678.901-2", cargo: "Maestro Carpintero",  grupo: "A", estado: "Turno",    hh: 240 },
+          { nombre: "Ana Riquelme",      rut: "16.789.012-3", cargo: "Maestro Albañil",     grupo: "C", estado: "Turno",    hh: 228 },
+          { nombre: "Pedro Muñoz",       rut: "17.890.123-4", cargo: "Ayudante",            grupo: "B", estado: "Descanso", hh: 192 },
+          { nombre: "Lorena Vidal",      rut: "18.901.234-5", cargo: "Maestro Eléctrico",   grupo: "B", estado: "Descanso", hh: 168 },
+          { nombre: "Diego Henríquez",   rut: "19.012.345-6", cargo: "Operador Maquinaria", grupo: "D", estado: "Descanso", hh: 156 },
+          { nombre: "Camila Toro",       rut: "20.123.456-7", cargo: "Prevencionista",      grupo: "A", estado: "Licencia", hh:  84 },
+        ],
+        cannedAnswers: [
+          "Según los reportes diarios, el avance físico real está en **78,6%**, con una desviación de **+2,1%** respecto a la curva plan.\n\nLa actividad crítica esta semana es **Estructura · Edif. B**, que tiene **132 HH ejecutadas** ayer pero un programa de 144 HH/día.",
+          "Hoy están en turno los grupos **A y C** (47 personas en total). Mañana rotan a B y D.\n\nNo veo licencias activas para hoy salvo Camila Toro (Prevencionista).",
+          "Mirando los últimos 5 reportes diarios:\n\n• Hormigonado losa N3 — 144 HH (Listo)\n• Instalación enfierradura — 120 HH (Ejecución)\n• Excavación zanja Nº4 — 96 HH (Listo)\n• Aseguramiento de losa — 84 HH (Listo)\n\nEl supervisor más activo de la semana es **Carlos Pérez**.",
+        ],
+      };
+
+      const STATUS_STYLE = {
+        listo:     "bg-green-500/10 text-green-500 border-green-500/20",
+        ejecucion: "bg-blue-500/10 text-blue-500 border-blue-500/20",
+        pendiente: "bg-gray-500/10 text-gray-500 border-gray-500/20",
+      };
+
+      // ===== Login flow ==================================================
+      const $ = (id) => document.getElementById(id);
+      let role = "worker";
+      let activeTab = "resumen";
+
+      function showLogin() {
+        $("login-screen").classList.remove("hidden");
+        $("main-app").classList.add("hidden");
+        $("login-selection").classList.remove("hidden");
+        $("admin-form").classList.add("hidden");
+      }
+      function showApp() {
+        $("login-screen").classList.add("hidden");
+        $("main-app").classList.remove("hidden");
+        renderTabs();
+        renderActiveTab();
+        primeChat();
+      }
+
+      document.querySelectorAll(".role-btn").forEach((btn) =>
+        btn.addEventListener("click", () => {
+          if (btn.dataset.role === "worker") {
+            role = "worker";
+            activeTab = "calendario";
+            showApp();
+          } else {
+            $("login-selection").classList.add("hidden");
+            $("admin-form").classList.remove("hidden");
+            $("admin-email").focus();
+          }
+        })
+      );
+      $("back-from-admin").addEventListener("click", showLogin);
+      $("enter-admin").addEventListener("click", () => {
+        role = "admin";
+        activeTab = "resumen";
+        showApp();
+      });
+      $("admin-pwd").addEventListener("keydown", (e) => {
+        if (e.key === "Enter") $("enter-admin").click();
+      });
+      $("logout").addEventListener("click", showLogin);
+
+      // ===== Theme toggle ================================================
+      $("theme-toggle").addEventListener("click", () => {
+        const isDark = document.documentElement.classList.toggle("dark");
+        $("theme-toggle").innerHTML = isDark
+          ? '<i data-lucide="sun" class="w-4 h-4"></i>'
+          : '<i data-lucide="moon" class="w-4 h-4"></i>';
+        lucide.createIcons();
+      });
+
+      // ===== Tabs ========================================================
+      const TABS = [
+        { id: "resumen",    label: "Resumen",     icon: "layout-dashboard" },
+        { id: "gantt",      label: "Carta Gantt", icon: "bar-chart-3"      },
+        { id: "calendario", label: "Calendario",  icon: "calendar"         },
+        { id: "reporte",    label: "Reportes",    icon: "file-text"        },
+        { id: "personal",   label: "Personal",    icon: "users"            },
+      ];
+
+      function renderTabs() {
+        const role_pill = $("role-pill");
+        role_pill.textContent = role === "admin" ? "ADMIN" : "SUPERVISOR";
+        role_pill.className =
+          "hidden sm:inline-flex px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border " +
+          (role === "admin"
+            ? "border-blue-500/40 text-brand-blue bg-blue-500/10"
+            : "border-amber-500/40 text-brand-amber bg-amber-500/10");
+
+        const buildTab = (t) => `
+          <button data-tab="${t.id}" class="tab-btn flex items-center gap-1.5 px-3 py-1.5 rounded-xl border transition-all whitespace-nowrap ${
+            t.id === activeTab
+              ? "dark:bg-brand-soft dark:border-brand-border bg-blue-50 border-blue-200 text-brand-blue dark:text-brand-amber font-black"
+              : "border-transparent text-gray-500 hover:text-gray-300"
+          }">
+            <i data-lucide="${t.icon}" class="w-3.5 h-3.5"></i>
+            <span class="font-bold">${t.label}</span>
+          </button>`;
+
+        $("tabs").innerHTML = TABS.map(buildTab).join("");
+        $("tabs-mobile").innerHTML = TABS.map(buildTab).join("");
+
+        document.querySelectorAll(".tab-btn").forEach((b) =>
+          b.addEventListener("click", () => {
+            activeTab = b.dataset.tab;
+            renderTabs();
+            renderActiveTab();
+          })
+        );
+        lucide.createIcons();
+      }
+
+      function statusBadge(status) {
+        const cls = STATUS_STYLE[status] || STATUS_STYLE.pendiente;
+        const label = { listo: "Listo", ejecucion: "Ejecución", pendiente: "Pendiente" }[status];
+        return `<span class="px-2 py-0.5 rounded-full text-[9px] font-black uppercase border ${cls}">${label}</span>`;
+      }
+
+      function renderActiveTab() {
+        const c = $("tab-content");
+        c.classList.remove("fade-in");
+        void c.offsetWidth;
+        c.classList.add("fade-in");
+
+        switch (activeTab) {
+          case "resumen":     c.innerHTML = renderResumen();    break;
+          case "gantt":       c.innerHTML = renderGantt();      break;
+          case "calendario":  c.innerHTML = renderCalendar();   break;
+          case "reporte":     c.innerHTML = renderReports();    break;
+          case "personal":    c.innerHTML = renderPersonnel();  break;
+        }
+        lucide.createIcons();
+      }
+
+      function renderResumen() {
+        const cards = SAMPLE.kpis.map((k) => `
+          <div class="p-5 rounded-2xl border dark:bg-brand-panel dark:border-brand-border bg-white border-gray-200 shadow-sm">
+            <div class="flex items-center justify-between mb-3">
+              <span class="text-[10px] font-black uppercase tracking-widest text-gray-500">${k.label}</span>
+              <div class="p-2 rounded-lg bg-${k.tone}-500/10 text-${k.tone}-500"><i data-lucide="${k.icon}" class="w-4 h-4"></i></div>
+            </div>
+            <p class="text-3xl font-black tabular-nums">${k.value}</p>
+            <p class="text-[11px] font-bold text-gray-500 mt-1">${k.sub}</p>
+          </div>`).join("");
+
+        const reports = SAMPLE.recentReports.map((r) => `
+          <li class="flex items-center justify-between gap-3 p-3 rounded-xl border dark:bg-brand-soft dark:border-brand-border bg-gray-50 border-gray-200">
+            <div class="min-w-0">
+              <p class="text-sm font-bold truncate">${r.tipo}</p>
+              <p class="text-[10px] text-gray-500 font-bold uppercase tracking-wider">${r.date} · ${r.sup} · ${r.wbs}</p>
+            </div>
+            <div class="flex items-center gap-2 shrink-0">
+              <span class="text-xs font-black text-brand-amber">${r.hours} HH</span>
+              ${statusBadge(r.status)}
+            </div>
+          </li>`).join("");
+
+        const curve = `
+          <svg viewBox="0 0 600 200" class="w-full h-48">
+            <defs>
+              <linearGradient id="g1" x1="0" x2="0" y1="0" y2="1">
+                <stop offset="0%" stop-color="#0f6fff" stop-opacity=".3"/>
+                <stop offset="100%" stop-color="#0f6fff" stop-opacity="0"/>
+              </linearGradient>
+              <linearGradient id="g2" x1="0" x2="0" y1="0" y2="1">
+                <stop offset="0%" stop-color="#ffb703" stop-opacity=".3"/>
+                <stop offset="100%" stop-color="#ffb703" stop-opacity="0"/>
+              </linearGradient>
+            </defs>
+            <g stroke="rgba(127,127,127,.2)" stroke-dasharray="3 3">
+              <line x1="0" y1="50"  x2="600" y2="50"/>
+              <line x1="0" y1="100" x2="600" y2="100"/>
+              <line x1="0" y1="150" x2="600" y2="150"/>
+            </g>
+            <path d="M0,180 C80,170 140,140 200,120 C260,100 320,80 380,60 C440,45 500,30 600,20 L600,200 L0,200 Z" fill="url(#g1)"/>
+            <path d="M0,180 C80,170 140,140 200,120 C260,100 320,80 380,60 C440,45 500,30 600,20" stroke="#0f6fff" stroke-width="2.5" fill="none"/>
+            <path d="M0,180 C80,175 140,160 200,135 C260,115 320,95 380,75 C440,60 500,45 600,35 L600,200 L0,200 Z" fill="url(#g2)"/>
+            <path d="M0,180 C80,175 140,160 200,135 C260,115 320,95 380,75 C440,60 500,45 600,35" stroke="#ffb703" stroke-width="2.5" fill="none" stroke-dasharray="6 4"/>
+          </svg>
+          <div class="flex items-center gap-4 text-[10px] font-bold uppercase tracking-widest text-gray-500 mt-2">
+            <span class="flex items-center gap-1.5"><span class="w-3 h-0.5 bg-brand-blue"></span>Real</span>
+            <span class="flex items-center gap-1.5"><span class="w-3 h-0.5 bg-brand-amber"></span>Planificado</span>
+          </div>`;
+
+        return `
+          <div>
+            <h2 class="text-2xl font-black uppercase tracking-tight mb-1">Resumen del Proyecto</h2>
+            <p class="text-xs text-gray-500 font-bold uppercase tracking-widest mb-5">Última sincronización: hoy 10:42</p>
+            <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">${cards}</div>
+            <div class="grid lg:grid-cols-3 gap-6">
+              <div class="lg:col-span-2 p-5 rounded-2xl border dark:bg-brand-panel dark:border-brand-border bg-white border-gray-200">
+                <div class="flex items-center justify-between mb-3">
+                  <h3 class="text-sm font-black uppercase tracking-widest">Curva de Avance · 6 meses</h3>
+                  <span class="text-[10px] font-bold text-gray-500">Mar - Ago 2026</span>
+                </div>
+                ${curve}
+              </div>
+              <div class="p-5 rounded-2xl border dark:bg-brand-panel dark:border-brand-border bg-white border-gray-200">
+                <h3 class="text-sm font-black uppercase tracking-widest mb-3">Actividad reciente</h3>
+                <ul class="space-y-2">${reports}</ul>
+              </div>
+            </div>
+          </div>`;
+      }
+
+      function renderGantt() {
+        const COLS = 24;
+        const months = ["Mar", "Abr", "May", "Jun", "Jul", "Ago"];
+        const header = months.map((m) =>
+          `<div class="text-[10px] font-black uppercase tracking-widest text-gray-500 border-l dark:border-brand-border border-gray-200 pl-2">${m}</div>`
+        ).join("");
+
+        const rows = SAMPLE.ganttTasks.map((t) => {
+          const left = (t.startCol / COLS) * 100;
+          const width = (t.span / COLS) * 100;
+          const bar = `bg-${t.status === "listo" ? "green" : t.status === "ejecucion" ? "blue" : "gray"}-500/80`;
+          return `
+            <div class="grid grid-cols-[180px_1fr] items-center py-2 border-b dark:border-brand-border border-gray-200">
+              <div class="pr-3 min-w-0">
+                <p class="text-xs font-bold truncate">${t.name}</p>
+                <p class="text-[9px] text-gray-500 font-bold uppercase tracking-widest truncate">${t.wbs}</p>
+              </div>
+              <div class="relative h-7">
+                <div class="absolute inset-0 flex">
+                  ${Array(COLS).fill('<div class="flex-1 border-l border-dashed dark:border-white/5 border-gray-200"></div>').join("")}
+                </div>
+                <div class="absolute top-1 h-5 rounded-md ${bar} flex items-center justify-end pr-1.5 text-[9px] font-black uppercase text-white"
+                     style="left: ${left}%; width: ${width}%;">
+                  ${statusBadge(t.status)}
+                </div>
+              </div>
+            </div>`;
+        }).join("");
+
+        return `
+          <div>
+            <div class="flex items-center justify-between mb-4">
+              <div>
+                <h2 class="text-2xl font-black uppercase tracking-tight mb-1">Carta Gantt</h2>
+                <p class="text-xs text-gray-500 font-bold uppercase tracking-widest">Importado de Primavera P6 · ${SAMPLE.ganttTasks.length} actividades</p>
+              </div>
+              <button class="px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest border dark:border-brand-border border-gray-200 hover:bg-black/5 dark:hover:bg-white/5 flex items-center gap-1.5">
+                <i data-lucide="upload" class="w-3.5 h-3.5"></i> Importar XER
+              </button>
+            </div>
+
+            <div class="p-5 rounded-2xl border dark:bg-brand-panel dark:border-brand-border bg-white border-gray-200 overflow-x-auto">
+              <div class="grid grid-cols-[180px_1fr] mb-2">
+                <div></div>
+                <div class="grid grid-cols-6 pl-1">${header}</div>
+              </div>
+              ${rows}
+            </div>
+          </div>`;
+      }
+
+      function renderCalendar() {
+        const today = new Date();
+        const year = today.getFullYear();
+        const month = today.getMonth();
+        const firstDay = new Date(year, month, 1).getDay();
+        const daysInMonth = new Date(year, month + 1, 0).getDate();
+        const cells = [];
+        for (let i = 0; i < firstDay; i++) cells.push(null);
+        for (let d = 1; d <= daysInMonth; d++) cells.push(d);
+        while (cells.length < 42) cells.push(null);
+
+        const tasksOnDay = (d) => {
+          if (!d) return [];
+          if (d % 7 === 0) return [{ name: "Hormigonado losa", status: "listo" }];
+          if (d % 5 === 0) return [{ name: "Encofrado pilares", status: "ejecucion" }, { name: "Excavación", status: "pendiente" }];
+          if (d % 3 === 0) return [{ name: "Inst. enfierradura", status: "ejecucion" }];
+          return [];
+        };
+
+        const weekHeader = ["Dom","Lun","Mar","Mié","Jue","Vie","Sáb"]
+          .map((d) => `<div class="text-center text-[10px] font-black uppercase tracking-widest text-gray-500 pb-1">${d}</div>`)
+          .join("");
+
+        const grid = cells.map((d) => {
+          const isToday = d === today.getDate();
+          const list = tasksOnDay(d);
+          const groupBadge = d
+            ? `<span class="text-[8px] font-black tracking-widest uppercase px-1 py-0.5 rounded leading-none ${
+                d % 14 < 7 ? "bg-amber-500/10 text-brand-amber" : "bg-blue-500/10 text-blue-500"
+              }">G-${d % 14 < 7 ? "A/C" : "B/D"}</span>`
+            : "";
+          return `
+            <div class="rounded-lg border min-h-[90px] p-1.5 flex flex-col gap-1 ${
+              d ? "dark:bg-brand-soft dark:border-brand-border bg-white border-gray-200" : "border-transparent"
+            } ${isToday ? "ring-2 ring-brand-amber" : ""}">
+              <div class="flex items-center justify-between">
+                ${groupBadge}
+                <span class="text-[10px] font-black ${isToday ? "bg-brand-amber text-black px-1.5 rounded-full" : "text-gray-500"}">${d || ""}</span>
+              </div>
+              ${list.map(t => `<div class="text-[9px] font-bold px-1.5 py-0.5 rounded truncate ${STATUS_STYLE[t.status]} border">${t.name}</div>`).join("")}
+            </div>`;
+        }).join("");
+
+        const monthName = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"][month];
+
+        return `
+          <div>
+            <div class="flex items-center justify-between mb-4">
+              <div>
+                <h2 class="text-2xl font-black uppercase tracking-tight">Calendario Operativo</h2>
+                <p class="text-xs text-amber-500 font-bold uppercase tracking-widest">${monthName} ${year} · Turnos 14×14</p>
+              </div>
+              <div class="flex gap-1">
+                <button class="p-2 rounded-xl border dark:border-brand-border border-gray-200"><i data-lucide="chevron-left" class="w-4 h-4"></i></button>
+                <button class="px-3 py-2 rounded-xl border dark:border-brand-border border-gray-200 text-xs font-black uppercase">Hoy</button>
+                <button class="p-2 rounded-xl border dark:border-brand-border border-gray-200"><i data-lucide="chevron-right" class="w-4 h-4"></i></button>
+              </div>
+            </div>
+            <div class="p-3 rounded-2xl border dark:bg-brand-panel dark:border-brand-border bg-white border-gray-200">
+              <div class="grid grid-cols-7 mb-1">${weekHeader}</div>
+              <div class="grid grid-cols-7 gap-1">${grid}</div>
+            </div>
+          </div>`;
+      }
+
+      function renderReports() {
+        const rows = SAMPLE.recentReports.map((r) => `
+          <tr class="border-b dark:border-brand-border border-gray-200">
+            <td class="px-3 py-3 font-bold text-xs">${r.date}</td>
+            <td class="px-3 py-3 text-xs">${r.sup}</td>
+            <td class="px-3 py-3 font-bold text-sm">${r.tipo}</td>
+            <td class="px-3 py-3 text-xs text-gray-500">${r.wbs}</td>
+            <td class="px-3 py-3 text-xs font-black text-brand-amber tabular-nums">${r.hours}</td>
+            <td class="px-3 py-3">${statusBadge(r.status)}</td>
+            <td class="px-3 py-3 text-right">
+              <button class="p-1.5 rounded-lg border dark:border-brand-border border-gray-200 hover:bg-black/5 dark:hover:bg-white/5"><i data-lucide="eye" class="w-3.5 h-3.5"></i></button>
+              ${role === "admin" ? '<button class="p-1.5 rounded-lg border ml-1 dark:border-brand-border border-gray-200 hover:bg-red-500/10 hover:text-red-500"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>' : ""}
+            </td>
+          </tr>`).join("");
+
+        return `
+          <div>
+            <div class="flex items-center justify-between mb-4">
+              <div>
+                <h2 class="text-2xl font-black uppercase tracking-tight">Reportes Diarios</h2>
+                <p class="text-xs text-gray-500 font-bold uppercase tracking-widest">${SAMPLE.recentReports.length} reportes · últimos 3 días</p>
+              </div>
+              <button class="px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest bg-brand-amber text-black flex items-center gap-1.5">
+                <i data-lucide="plus-circle" class="w-3.5 h-3.5"></i> Nuevo Reporte
+              </button>
+            </div>
+            <div class="rounded-2xl border dark:bg-brand-panel dark:border-brand-border bg-white border-gray-200 overflow-x-auto">
+              <table class="w-full text-left">
+                <thead class="text-[10px] font-black uppercase tracking-widest text-gray-500 border-b dark:border-brand-border border-gray-200">
+                  <tr>
+                    <th class="px-3 py-2.5">Fecha</th>
+                    <th class="px-3 py-2.5">Supervisor</th>
+                    <th class="px-3 py-2.5">Labor</th>
+                    <th class="px-3 py-2.5">WBS</th>
+                    <th class="px-3 py-2.5">HH</th>
+                    <th class="px-3 py-2.5">Estado</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody>${rows}</tbody>
+              </table>
+            </div>
+          </div>`;
+      }
+
+      function renderPersonnel() {
+        const grouped = {};
+        SAMPLE.personnel.forEach((p) => {
+          grouped[p.grupo] = grouped[p.grupo] || { total: 0, onDuty: 0 };
+          grouped[p.grupo].total++;
+          if (p.estado === "Turno") grouped[p.grupo].onDuty++;
+        });
+        const groupCards = Object.entries(grouped).map(([g, info]) => `
+          <div class="p-4 rounded-2xl border dark:bg-brand-panel dark:border-brand-border bg-white border-gray-200">
+            <p class="text-[10px] font-black uppercase tracking-widest text-gray-500">Grupo ${g}</p>
+            <p class="text-2xl font-black tabular-nums mt-1">${info.onDuty} / ${info.total}</p>
+            <p class="text-[10px] font-bold text-gray-500">en turno / total</p>
+          </div>`).join("");
+
+        const stateStyle = (s) =>
+          s === "Turno"    ? "bg-green-500/10 text-green-500 border-green-500/20" :
+          s === "Descanso" ? "bg-blue-500/10 text-blue-500 border-blue-500/20" :
+          s === "Licencia" ? "bg-amber-500/10 text-brand-amber border-amber-500/20" :
+                             "bg-gray-500/10 text-gray-500 border-gray-500/20";
+
+        const rows = SAMPLE.personnel.map((p) => `
+          <tr class="border-b dark:border-brand-border border-gray-200">
+            <td class="px-3 py-3 font-bold text-sm">${p.nombre}</td>
+            <td class="px-3 py-3 text-xs text-gray-500 font-mono">${p.rut}</td>
+            <td class="px-3 py-3 text-xs">${p.cargo}</td>
+            <td class="px-3 py-3 text-xs"><span class="font-black px-2 py-0.5 rounded-md bg-gray-500/10 border dark:border-brand-border border-gray-200">${p.grupo}</span></td>
+            <td class="px-3 py-3"><span class="px-2 py-0.5 rounded-full text-[9px] font-black uppercase border ${stateStyle(p.estado)}">${p.estado}</span></td>
+            <td class="px-3 py-3 text-xs font-black text-brand-amber tabular-nums">${p.hh}</td>
+          </tr>`).join("");
+
+        return `
+          <div>
+            <div class="flex items-center justify-between mb-4">
+              <div>
+                <h2 class="text-2xl font-black uppercase tracking-tight">Control de Personal</h2>
+                <p class="text-xs text-gray-500 font-bold uppercase tracking-widest">${SAMPLE.personnel.length} trabajadores · turnos 14×14</p>
+              </div>
+              ${role === "admin" ? '<button class="px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest bg-brand-blue text-white flex items-center gap-1.5"><i data-lucide="upload" class="w-3.5 h-3.5"></i> Importar Excel</button>' : ""}
+            </div>
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">${groupCards}</div>
+            <div class="rounded-2xl border dark:bg-brand-panel dark:border-brand-border bg-white border-gray-200 overflow-x-auto">
+              <table class="w-full text-left">
+                <thead class="text-[10px] font-black uppercase tracking-widest text-gray-500 border-b dark:border-brand-border border-gray-200">
+                  <tr>
+                    <th class="px-3 py-2.5">Nombre</th>
+                    <th class="px-3 py-2.5">RUT</th>
+                    <th class="px-3 py-2.5">Cargo</th>
+                    <th class="px-3 py-2.5">Grupo</th>
+                    <th class="px-3 py-2.5">Estado</th>
+                    <th class="px-3 py-2.5">HH Acum.</th>
+                  </tr>
+                </thead>
+                <tbody>${rows}</tbody>
+              </table>
+            </div>
+          </div>`;
+      }
+
+      // ===== Solgramia chat (mock) ======================================
+      function chatBubble(role, text) {
+        const wrap = document.createElement("div");
+        wrap.className = "flex " + (role === "user" ? "justify-end" : "justify-start");
+        wrap.innerHTML = `
+          <div class="max-w-[85%] rounded-2xl px-3.5 py-2 text-[13px] leading-snug ${
+            role === "user"
+              ? "bg-brand-amber text-black"
+              : "dark:bg-[#1a2440] dark:text-gray-200 bg-gray-100 text-gray-800"
+          }">${text.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>").replace(/\n/g, "<br>")}</div>`;
+        return wrap;
+      }
+      function primeChat() {
+        const cont = $("chat-messages");
+        cont.innerHTML = "";
+        cont.appendChild(chatBubble("model", "¡Hola! Soy <strong>Solgramia</strong>. En esta vista previa solo respondo con datos de muestra. Pregúntame por:\n• Avance del proyecto\n• Personal en turno\n• Reportes recientes"));
+      }
+      $("chat-toggle").addEventListener("click", () => $("chat-panel").classList.toggle("hidden"));
+      $("chat-close").addEventListener("click", () => $("chat-panel").classList.add("hidden"));
+      $("chat-form").addEventListener("submit", (e) => {
+        e.preventDefault();
+        const v = $("chat-input").value.trim();
+        if (!v) return;
+        const cont = $("chat-messages");
+        cont.appendChild(chatBubble("user", v));
+        $("chat-input").value = "";
+
+        const typing = document.createElement("div");
+        typing.className = "flex justify-start";
+        typing.innerHTML = '<div class="rounded-2xl px-3.5 py-2 text-[13px] dark:bg-[#1a2440] bg-gray-100 typing">Pensando</div>';
+        cont.appendChild(typing);
+        cont.scrollTop = cont.scrollHeight;
+
+        setTimeout(() => {
+          typing.remove();
+          const reply = SAMPLE.cannedAnswers[Math.floor(Math.random() * SAMPLE.cannedAnswers.length)];
+          cont.appendChild(chatBubble("model", reply));
+          cont.scrollTop = cont.scrollHeight;
+        }, 700);
+      });
+
+      // ===== Boot ========================================================
+      lucide.createIcons();
+      showLogin();
+    </script>
+  </body>
+</html>

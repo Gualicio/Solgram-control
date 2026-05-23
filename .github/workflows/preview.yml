@@ -1,0 +1,56 @@
+name: Publish demo preview to GitHub Pages
+
+# Publica demo/preview.html en GitHub Pages para tener una URL pública
+# de la vista previa interactiva (sin Firebase, datos de ejemplo).
+#
+# Para que funcione:
+#   1. En la pestaña Settings > Pages del repo, en "Source" elige
+#      "GitHub Actions".
+#   2. Mergea el PR (o haz push a main).
+#   3. La URL quedará en:
+#      https://<owner>.github.io/<repo>/
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "demo/**"
+      - ".github/workflows/preview.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Prepare site
+        run: |
+          mkdir -p _site
+          cp demo/preview.html _site/index.html
+          cp demo/preview.html _site/preview.html
+          cp -r demo/README.md _site/README.md || true
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
