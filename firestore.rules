@@ -1,0 +1,119 @@
+rules_version = '2';
+
+// Reglas de seguridad de Firestore para Solgram Control.
+// Modelo de roles:
+//   - "admin"   : usuarios cuyo uid existe como documento en /admins/{uid}.
+//                 Los documentos en /admins SOLO se crean/borran desde el
+//                 backend con Firebase Admin SDK (nunca desde el cliente).
+//   - "worker"  : cualquier otro usuario autenticado (puede ser anónimo).
+//
+// Nota: si necesitas crear el primer admin, usa el script
+// scripts/bootstrap-admin.cjs con un service-account de Firebase.
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // -------- helpers --------
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isSignedIn()
+        && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+    }
+
+    // Sólo permitir IDs "razonables" en path variables.
+    function isSafeId(id) {
+      return id is string && id.size() > 0 && id.size() <= 128;
+    }
+
+    function isShortString(value, max) {
+      return value is string && value.size() <= max;
+    }
+
+    function isNonNegativeNumber(value) {
+      return value is number && value >= 0;
+    }
+
+    // -------- /admins (lista de cuentas con privilegios) --------
+    // Lectura: cualquier usuario autenticado (necesario para que el
+    // cliente sepa si es admin sin tener que llamar al backend).
+    // Escritura: prohibida desde el cliente. Solo Admin SDK.
+    match /admins/{uid} {
+      allow read:  if isSignedIn();
+      allow write: if false;
+    }
+
+    // -------- /reports (reportes diarios) --------
+    match /reports/{id} {
+      allow read: if isSignedIn();
+
+      // Cualquier usuario autenticado puede crear reportes con campos válidos.
+      allow create: if isSignedIn()
+        && isSafeId(id)
+        && request.resource.data.date is string
+        && request.resource.data.date.matches('^\\d{4}-\\d{2}-\\d{2}$')
+        && isShortString(request.resource.data.sup,    120)
+        && isShortString(request.resource.data.tipo,   200)
+        && isShortString(request.resource.data.wbs,    200)
+        && (!('detalle' in request.resource.data)
+            || isShortString(request.resource.data.detalle, 5000))
+        && (!('hours' in request.resource.data)
+            || isNonNegativeNumber(request.resource.data.hours))
+        && !('isAdmin' in request.resource.data); // bloquea shadow injection
+
+      // Update: el dueño/colaboradores pueden tocar campos del reporte;
+      // sólo admin puede cambiar 'status' a 'listo'.
+      allow update: if isSignedIn()
+        && (
+          !('status' in request.resource.data) ||
+          request.resource.data.status != 'listo' ||
+          isAdmin()
+        )
+        && !('isAdmin' in request.resource.data);
+
+      allow delete: if isAdmin();
+    }
+
+    // -------- /workers (personal) --------
+    match /workers/{id} {
+      allow read:  if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    // -------- /config (configuración global de proyecto) --------
+    // Documentos esperados: global, schedule, shift, licenses, extraHours.
+    match /config/{id} {
+      allow read:  if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    // -------- /extraHours (registros de horas extras sueltos) --------
+    match /extraHours/{id} {
+      allow read:   if isSignedIn();
+      allow create: if isSignedIn()
+        && isNonNegativeNumber(request.resource.data.hours)
+        && request.resource.data.workerName is string;
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // -------- /licenses --------
+    match /licenses/{id} {
+      allow read:  if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    // -------- /test/connection (ping de conectividad) --------
+    match /test/connection {
+      allow read: if true;
+    }
+
+    // -------- catch-all --------
+    // Cualquier otra ruta queda explícitamente denegada.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

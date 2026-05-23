@@ -1,0 +1,6 @@
+{
+  "name": "SOLGRAM CONTROL",
+  "description": "Suite Unificada de Control de Proyecto con Dashboard, Gantt XER, Control de Personal y Reporte Diario.",
+  "requestFramePermissions": ["camera"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
