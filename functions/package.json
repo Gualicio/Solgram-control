@@ -1,0 +1,28 @@
+{
+  "name": "solgram-control-functions",
+  "private": true,
+  "scripts": {
+    "build": "tsc",
+    "build:watch": "tsc --watch",
+    "serve": "npm run build && firebase emulators:start --only functions",
+    "shell": "npm run build && firebase functions:shell",
+    "start": "npm run shell",
+    "deploy": "firebase deploy --only functions",
+    "logs": "firebase functions:log"
+  },
+  "engines": {
+    "node": "20"
+  },
+  "main": "lib/index.js",
+  "dependencies": {
+    "@google/genai": "^2.2.0",
+    "express": "^4.21.2",
+    "express-rate-limit": "^7.5.0",
+    "firebase-admin": "^13.0.1",
+    "firebase-functions": "^6.0.1"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "typescript": "~5.8.2"
+  }
+}
