@@ -1,0 +1,1388 @@
+<!doctype html>
+<html lang="es" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Solgram Control · Demo Completa</title>
+  <meta name="description" content="App completa de Solgram Control en un único archivo HTML. Persistencia local, sin backend." />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: { extend: { colors: { brand: {
+        bg: '#0d1117', panel: '#161b22', border: '#30363d',
+        soft: '#21262d', amber: '#ffb703', blue: '#0f6fff',
+      } } } }
+    };
+  </script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <style>
+    :root { color-scheme: dark; }
+    html.dark body { background: #0d1117; color: #e6edf7; }
+    body {
+      background: #f8fafc; color: #0f172a;
+      font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Inter", sans-serif;
+    }
+    .scroll::-webkit-scrollbar { width: 8px; height: 8px; }
+    .scroll::-webkit-scrollbar-thumb { background: rgba(127,127,127,.3); border-radius: 8px; }
+    .fade-in { animation: fade .25s ease-out both; }
+    .pop-in { animation: pop .2s ease-out both; }
+    @keyframes fade { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+    @keyframes pop { from { opacity: 0; transform: scale(.96); } to { opacity: 1; transform: scale(1); } }
+    .typing::after { content: '▍'; animation: blink 1s step-end infinite; }
+    @keyframes blink { 50% { opacity: 0; } }
+    [contenteditable]:focus { outline: 2px solid #0f6fff; border-radius: 4px; }
+  </style>
+</head>
+<body class="min-h-screen">
+
+<div id="app"></div>
+<div id="modal-root"></div>
+<div id="chat-root"></div>
+<div id="toast-root" class="fixed top-4 right-4 z-[400] flex flex-col gap-2 pointer-events-none"></div>
+
+<script>
+/* ============================================================
+   SOLGRAM CONTROL · DEMO ESPAGUETI · single-file
+   Vanilla JS + Tailwind CDN + Lucide + SheetJS.
+   Toda la persistencia vive en localStorage.
+   ============================================================ */
+
+const STORAGE_KEY = 'solgram_spaghetti_v1';
+
+/* ===================== STATE ===================== */
+let state = {
+  userRole:    null,         // null | 'worker' | 'admin'
+  theme:       'dark',
+  activeTab:   'resumen',
+  workers:     [],
+  reports:     [],
+  schedule:    null,
+  shiftConfig: { anchorDate: '', anchorShift: 'A', cycleDays: 14, hoursPerShift: 12 },
+  licenses:    [],
+  extraHours:  [],
+  chatHistory: [],
+};
+
+const $   = (id)  => document.getElementById(id);
+const esc = (s)   => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const uid = ()    => 'id-' + Math.random().toString(36).slice(2, 11) + Date.now().toString(36);
+const todayStr = () => new Date().toISOString().slice(0, 10);
+const daysFrom = (n) => { const d = new Date(); d.setDate(d.getDate() + n); return d.toISOString().slice(0,10); };
+const fmtMoney = (n) => Number(n||0).toLocaleString('es-CL', { maximumFractionDigits: 0 });
+const fmtDate = (s) => {
+  if (!s) return '—';
+  const d = new Date(s + (s.length === 10 ? 'T12:00:00' : ''));
+  return d.toLocaleDateString('es-CL', { day: '2-digit', month: 'short', year: 'numeric' });
+};
+
+/* ===================== STORAGE ===================== */
+function persist() {
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch (e) {}
+}
+function load() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) { Object.assign(state, JSON.parse(raw)); return true; }
+  } catch (e) {}
+  return false;
+}
+function fullReset() {
+  if (!confirm('¿Restablecer toda la demo a su estado inicial? Se borrarán los cambios que hayas hecho.')) return;
+  localStorage.removeItem(STORAGE_KEY);
+  location.reload();
+}
+
+/* ===================== SEED DATA ===================== */
+function seed() {
+  state.shiftConfig = { anchorDate: daysFrom(-7), anchorShift: 'A', cycleDays: 14, hoursPerShift: 12 };
+
+  state.workers = [
+    { id: uid(), nombre: 'Carlos Pérez',     rut: '12.345.678-9', cargo: 'Supervisor',          grupo: 'A', jornada: '14x14', estado: 'Turno',    hh: 312, hhe: 18 },
+    { id: uid(), nombre: 'Marcela Soto',     rut: '13.456.789-K', cargo: 'Capataz',             grupo: 'A', jornada: '14x14', estado: 'Turno',    hh: 288, hhe: 12 },
+    { id: uid(), nombre: 'Rodrigo González', rut: '14.567.890-1', cargo: 'Supervisor',          grupo: 'C', jornada: '14x14', estado: 'Turno',    hh: 264, hhe: 20 },
+    { id: uid(), nombre: 'Felipe Núñez',     rut: '15.678.901-2', cargo: 'Maestro Carpintero',  grupo: 'A', jornada: '14x14', estado: 'Turno',    hh: 240, hhe: 6  },
+    { id: uid(), nombre: 'Ana Riquelme',     rut: '16.789.012-3', cargo: 'Maestro Albañil',     grupo: 'C', jornada: '14x14', estado: 'Turno',    hh: 228, hhe: 8  },
+    { id: uid(), nombre: 'Pedro Muñoz',      rut: '17.890.123-4', cargo: 'Ayudante',            grupo: 'B', jornada: '14x14', estado: 'Descanso', hh: 192, hhe: 0  },
+    { id: uid(), nombre: 'Lorena Vidal',     rut: '18.901.234-5', cargo: 'Maestro Eléctrico',   grupo: 'B', jornada: '14x14', estado: 'Descanso', hh: 168, hhe: 4  },
+    { id: uid(), nombre: 'Diego Henríquez',  rut: '19.012.345-6', cargo: 'Operador Maquinaria', grupo: 'D', jornada: '14x14', estado: 'Descanso', hh: 156, hhe: 10 },
+    { id: uid(), nombre: 'Camila Toro',      rut: '20.123.456-7', cargo: 'Prevencionista',      grupo: 'A', jornada: '14x14', estado: 'Licencia', hh: 84,  hhe: 0  },
+    { id: uid(), nombre: 'Javier Rojas',     rut: '21.234.567-8', cargo: 'Jornal',              grupo: 'C', jornada: '14x14', estado: 'Turno',    hh: 144, hhe: 2  },
+    { id: uid(), nombre: 'Patricia Lagos',   rut: '22.345.678-9', cargo: 'Bodeguera',           grupo: 'A', jornada: '14x14', estado: 'Turno',    hh: 192, hhe: 0  },
+    { id: uid(), nombre: 'Tomás Fuentes',    rut: '23.456.789-0', cargo: 'Operario Soldador',   grupo: 'B', jornada: '14x14', estado: 'Descanso', hh: 132, hhe: 14 },
+  ];
+
+  const tasks = [
+    { id: 'T-01', name: 'Movimiento de tierra', wbsName: 'Mov. Tierra',          startDate: daysFrom(-90), endDate: daysFrom(-60), status: 'TK_Complete' },
+    { id: 'T-02', name: 'Fundaciones Edif. A',  wbsName: 'Estructura · Edif. A', startDate: daysFrom(-65), endDate: daysFrom(-30), status: 'TK_Complete' },
+    { id: 'T-03', name: 'Estructura Edif. A',   wbsName: 'Estructura · Edif. A', startDate: daysFrom(-30), endDate: daysFrom( 25), status: 'TK_Active'   },
+    { id: 'T-04', name: 'Fundaciones Edif. B',  wbsName: 'Estructura · Edif. B', startDate: daysFrom(-15), endDate: daysFrom( 20), status: 'TK_Active'   },
+    { id: 'T-05', name: 'Estructura Edif. B',   wbsName: 'Estructura · Edif. B', startDate: daysFrom( 20), endDate: daysFrom( 80), status: 'TK_Pending'  },
+    { id: 'T-06', name: 'Instalaciones MEP',    wbsName: 'Instalaciones',        startDate: daysFrom( 60), endDate: daysFrom(120), status: 'TK_Pending'  },
+    { id: 'T-07', name: 'Terminaciones',        wbsName: 'Terminaciones',        startDate: daysFrom(110), endDate: daysFrom(160), status: 'TK_Pending'  },
+    { id: 'T-08', name: 'Entrega Provisoria',   wbsName: 'Entrega',              startDate: daysFrom(160), endDate: daysFrom(160), status: 'TK_Pending', isMilestone: true },
+  ];
+  state.schedule = {
+    name: 'Edificio Solgram · Torre A+B',
+    fileName: 'solgram-torre-ab.xer',
+    startDate: daysFrom(-90),
+    endDate:   daysFrom(160),
+    calendarName: '14x14',
+    tasks,
+    primaryLabors: [...new Set(tasks.map(t => t.wbsName))].map(n => ({ id: 'W-'+n, name: n })),
+    stats: {
+      total: tasks.length,
+      completed: tasks.filter(t => t.status === 'TK_Complete').length,
+      active:    tasks.filter(t => t.status === 'TK_Active').length,
+      sumActualHrs: 9812,
+      sumTotalHrs:  12480,
+      sumPlannedHrs: 9600,
+    },
+  };
+
+  state.licenses = [{
+    nombre: 'Camila Toro', rut: '20.123.456-7', cargo: 'Prevencionista',
+    grupo: 'A', desde: daysFrom(-3), hasta: daysFrom(7), dias: 10,
+  }];
+
+  state.extraHours = [
+    { id: uid(), date: daysFrom(-2), workerName: 'Carlos Pérez',     hours: 4 },
+    { id: uid(), date: daysFrom(-2), workerName: 'Rodrigo González', hours: 3 },
+    { id: uid(), date: daysFrom(-1), workerName: 'Marcela Soto',     hours: 2 },
+  ];
+
+  state.reports = [
+    {
+      id: uid(), date: daysFrom(0), sup: 'Carlos Pérez', wbs: 'Estructura · Edif. A',
+      tipo: 'Hormigonado losa nivel 3',
+      detalle: 'Hormigonado completo de losa N3 en sector poniente. Curado iniciado a las 17:30. Sin novedades de seguridad.',
+      workers: ['Felipe Núñez','Ana Riquelme','Patricia Lagos'],
+      workersDetail: [
+        { name:'Felipe Núñez',   hours: 12 },
+        { name:'Ana Riquelme',   hours: 12 },
+        { name:'Patricia Lagos', hours: 10 },
+      ],
+      hours: 34, status: 'listo', taskId: 'T-03', images: [],
+    },
+    {
+      id: uid(), date: daysFrom(0), sup: 'Marcela Soto', wbs: 'Estructura · Edif. A',
+      tipo: 'Instalación enfierradura pilares',
+      detalle: 'Avance 70%. Pendiente terminar P-12 y P-13 mañana.',
+      workers: ['Carlos Pérez'],
+      workersDetail: [{ name:'Carlos Pérez', hours: 12 }],
+      hours: 12, status: 'ejecucion', taskId: 'T-03', images: [],
+    },
+    {
+      id: uid(), date: daysFrom(-1), sup: 'Rodrigo González', wbs: 'Estructura · Edif. B',
+      tipo: 'Excavación zanja Nº 4',
+      detalle: 'Zanja terminada a profundidad de 1,80 m. Listo para enfierradura.',
+      workers: ['Diego Henríquez','Javier Rojas'],
+      workersDetail: [
+        { name:'Diego Henríquez', hours: 12 },
+        { name:'Javier Rojas',    hours: 12 },
+      ],
+      hours: 24, status: 'listo', taskId: 'T-04', images: [],
+    },
+    {
+      id: uid(), date: daysFrom(-1), sup: 'Carlos Pérez', wbs: 'Estructura · Edif. B',
+      tipo: 'Aseguramiento de losa',
+      detalle: 'Apuntalamiento completo en losa N2.',
+      workers: ['Felipe Núñez','Ana Riquelme'],
+      workersDetail: [
+        { name:'Felipe Núñez', hours: 8 },
+        { name:'Ana Riquelme', hours: 8 },
+      ],
+      hours: 16, status: 'listo', images: [],
+    },
+    {
+      id: uid(), date: daysFrom(-2), sup: 'Marcela Soto', wbs: 'Estructura · Edif. B',
+      tipo: 'Encofrado pilares P-12',
+      detalle: 'En proceso. Faltan caras norte y este.',
+      workers: ['Pedro Muñoz','Tomás Fuentes'],
+      workersDetail: [
+        { name:'Pedro Muñoz',   hours: 12 },
+        { name:'Tomás Fuentes', hours: 11 },
+      ],
+      hours: 23, status: 'ejecucion', images: [],
+    },
+  ];
+
+  persist();
+}
+
+/* ===================== HELPERS ===================== */
+const STATUS_LABEL = {
+  pendiente: 'Pendiente', ejecucion: 'En Ejecución', listo: 'Listo',
+  TK_Pending: 'Pendiente', TK_Active: 'En Ejecución', TK_Complete: 'Completado',
+};
+const STATUS_CLASS = {
+  pendiente: 'bg-gray-500/10 text-gray-500 border-gray-500/20',
+  ejecucion: 'bg-blue-500/10 text-blue-500 border-blue-500/20',
+  listo:     'bg-green-500/10 text-green-500 border-green-500/20',
+};
+const TASK_BAR = {
+  TK_Pending:  'bg-gray-500/70',
+  TK_Active:   'bg-blue-500/80',
+  TK_Complete: 'bg-green-500/80',
+};
+function statusBadge(s) {
+  const cls = STATUS_CLASS[s] || STATUS_CLASS.pendiente;
+  return `<span class="px-2 py-0.5 rounded-full text-[9px] font-black uppercase border ${cls}">${esc(STATUS_LABEL[s] || s)}</span>`;
+}
+
+function getWorkingGroups(date) {
+  const cfg = state.shiftConfig;
+  if (!cfg.anchorDate) return ['A','C'];
+  const anchor = new Date(cfg.anchorDate + 'T12:00:00');
+  const target = new Date(date + 'T12:00:00');
+  const diff = Math.floor((target - anchor) / 86400000);
+  const cycleTotal = cfg.cycleDays * 2;
+  const pos = ((diff % cycleTotal) + cycleTotal) % cycleTotal;
+  const isA = pos < cfg.cycleDays;
+  return cfg.anchorShift === 'A' ? (isA ? ['A','C'] : ['B','D']) : (isA ? ['B','D'] : ['A','C']);
+}
+
+function tasksOnDate(dateStr) {
+  if (!state.schedule) return [];
+  return state.schedule.tasks.filter(t => {
+    if (!t.startDate) return false;
+    const s = t.startDate.slice(0,10);
+    const e = (t.endDate || t.startDate).slice(0,10);
+    return dateStr >= s && dateStr <= e;
+  });
+}
+
+function reportsForDate(dateStr) {
+  return state.reports.filter(r => r.date === dateStr);
+}
+
+function reportForTaskOnDate(taskId, dateStr) {
+  return state.reports.find(r => r.taskId === taskId && r.date === dateStr);
+}
+
+function toast(msg, kind = 'info') {
+  const id = uid();
+  const tone = { info: 'bg-blue-500', success: 'bg-green-500', error: 'bg-red-500' }[kind] || 'bg-blue-500';
+  const el = document.createElement('div');
+  el.id = id;
+  el.className = `pop-in pointer-events-auto px-4 py-2.5 rounded-xl text-sm font-bold text-white shadow-lg ${tone}`;
+  el.textContent = msg;
+  $('toast-root').appendChild(el);
+  setTimeout(() => { el.style.opacity = '0'; el.style.transition = 'opacity .3s'; setTimeout(() => el.remove(), 300); }, 2800);
+}
+
+/* ===================== ACTIONS (CRUD) ===================== */
+function setRole(role) { state.userRole = role; state.activeTab = role === 'admin' ? 'resumen' : 'calendario'; persist(); render(); }
+function logout()       { state.userRole = null; persist(); render(); }
+function toggleTheme()  { state.theme = state.theme === 'dark' ? 'light' : 'dark'; persist(); render(); }
+function setTab(t)      { state.activeTab = t; persist(); render(); }
+
+function addReport(r)            { state.reports.unshift({ id: uid(), images: [], ...r }); persist(); render(); toast('Reporte creado', 'success'); }
+function updateReport(id, partial){ const i = state.reports.findIndex(r => r.id === id); if (i >= 0) { state.reports[i] = { ...state.reports[i], ...partial }; persist(); render(); toast('Reporte actualizado', 'success'); } }
+function deleteReport(id)         { state.reports = state.reports.filter(r => r.id !== id); persist(); render(); toast('Reporte eliminado', 'success'); }
+
+function addWorker(w)             { state.workers.push({ id: uid(), hh: 0, hhe: 0, ...w }); persist(); render(); toast('Trabajador agregado', 'success'); }
+function updateWorker(id, partial){ const i = state.workers.findIndex(w => w.id === id); if (i >= 0) { state.workers[i] = { ...state.workers[i], ...partial }; persist(); render(); toast('Trabajador actualizado', 'success'); } }
+function deleteWorker(id)         { state.workers = state.workers.filter(w => w.id !== id); persist(); render(); toast('Trabajador eliminado', 'success'); }
+
+function setTaskStatus(taskId, newStatus) {
+  if (!state.schedule) return;
+  const t = state.schedule.tasks.find(t => t.id === taskId);
+  if (t) { t.status = newStatus; persist(); render(); toast('Tarea actualizada', 'success'); }
+}
+
+/* ===================== RENDER ===================== */
+function render() {
+  document.documentElement.classList.toggle('dark', state.theme === 'dark');
+
+  if (!state.userRole) {
+    $('app').innerHTML = renderLogin();
+  } else {
+    $('app').innerHTML = renderShell();
+  }
+  lucide.createIcons();
+}
+
+/* ----- LOGIN ----- */
+function renderLogin() {
+  return `
+    <div class="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div class="max-w-md w-full p-8 rounded-3xl border shadow-2xl pop-in dark:bg-brand-panel/90 dark:border-brand-border bg-white border-gray-200">
+        <div class="text-center mb-8">
+          <div class="inline-flex p-3 rounded-2xl bg-blue-500/10 mb-4 text-brand-blue"><i data-lucide="shield-check" class="w-8 h-8"></i></div>
+          <h1 class="text-2xl font-black mb-2 dark:text-white text-gray-900 uppercase tracking-tight">Solgram Control</h1>
+          <p class="text-xs uppercase tracking-widest text-gray-500 font-bold">Demo · datos persistentes en este navegador</p>
+        </div>
+
+        <div id="login-selection" class="space-y-3">
+          <button onclick="setRole('worker')" class="group w-full flex items-center gap-4 p-5 rounded-2xl border text-left transition-all dark:bg-brand-soft dark:border-brand-border dark:hover:border-orange-500/50 bg-white border-gray-200 hover:border-orange-500/50">
+            <div class="p-3 rounded-xl bg-orange-500/10 text-orange-500 group-hover:scale-110 transition-transform"><i data-lucide="user-circle" class="w-6 h-6"></i></div>
+            <div class="flex-1">
+              <h3 class="text-sm font-bold uppercase dark:text-white text-gray-900">Supervisor</h3>
+              <p class="text-[10px] text-gray-500 font-medium">Ver calendario y reportar avances</p>
+            </div>
+            <i data-lucide="arrow-right" class="w-4 h-4 text-gray-500"></i>
+          </button>
+
+          <button onclick="document.getElementById('login-selection').classList.add('hidden'); document.getElementById('admin-form').classList.remove('hidden'); document.getElementById('admin-email').focus();" class="group w-full flex items-center gap-4 p-5 rounded-2xl border text-left transition-all dark:bg-brand-soft dark:border-brand-border dark:hover:border-blue-500/50 bg-white border-gray-200 hover:border-blue-500/50">
+            <div class="p-3 rounded-xl bg-blue-500/10 text-blue-500 group-hover:scale-110 transition-transform"><i data-lucide="shield-check" class="w-6 h-6"></i></div>
+            <div class="flex-1">
+              <h3 class="text-sm font-bold uppercase dark:text-white text-gray-900">Administrador de Obra</h3>
+              <p class="text-[10px] text-gray-500 font-medium">Acceso total a la información</p>
+            </div>
+            <i data-lucide="arrow-right" class="w-4 h-4 text-gray-500"></i>
+          </button>
+        </div>
+
+        <div id="admin-form" class="hidden space-y-4 fade-in">
+          <div class="relative">
+            <i data-lucide="mail" class="w-4 h-4 absolute inset-y-0 left-4 my-auto text-gray-500"></i>
+            <input id="admin-email" type="email" placeholder="Cualquier email (es demo)"
+              class="w-full pl-11 pr-4 py-3.5 rounded-2xl border text-sm focus:outline-none dark:bg-[#0d1117] dark:border-brand-border dark:text-white bg-gray-50 border-gray-200 text-gray-900 focus:border-blue-500" />
+          </div>
+          <div class="relative">
+            <i data-lucide="lock" class="w-4 h-4 absolute inset-y-0 left-4 my-auto text-gray-500"></i>
+            <input id="admin-pwd" type="password" placeholder="Cualquier clave"
+              onkeydown="if(event.key==='Enter')setRole('admin')"
+              class="w-full pl-11 pr-4 py-3.5 rounded-2xl border text-sm focus:outline-none dark:bg-[#0d1117] dark:border-brand-border dark:text-white bg-gray-50 border-gray-200 text-gray-900 focus:border-blue-500" />
+          </div>
+          <p class="text-[10px] text-center text-amber-500 font-bold uppercase tracking-wider">En la demo cualquier valor te deja entrar</p>
+          <div class="flex gap-3 pt-1">
+            <button onclick="document.getElementById('admin-form').classList.add('hidden'); document.getElementById('login-selection').classList.remove('hidden');" class="flex-1 py-3.5 rounded-2xl font-bold text-xs uppercase tracking-wider border dark:border-brand-border dark:text-gray-400 border-gray-200 text-gray-500">Atrás</button>
+            <button onclick="setRole('admin')" class="flex-[3] bg-brand-blue text-white py-3.5 rounded-2xl font-black text-xs uppercase tracking-widest shadow-lg shadow-blue-500/20">Ingresar</button>
+          </div>
+        </div>
+
+        <div class="mt-8 pt-6 border-t border-gray-500/10 text-center">
+          <p class="text-[10px] text-gray-500 font-bold uppercase tracking-widest">Control de Gestión Solgram</p>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+/* ----- SHELL (header + main + chat) ----- */
+function renderShell() {
+  const isAdmin = state.userRole === 'admin';
+  const tabs = isAdmin
+    ? [
+        { id: 'resumen',    label: 'Resumen',     icon: 'layout-dashboard' },
+        { id: 'gantt',      label: 'Carta Gantt', icon: 'bar-chart-3'      },
+        { id: 'calendario', label: 'Calendario',  icon: 'calendar'         },
+        { id: 'reportes',   label: 'Reportes',    icon: 'file-text'        },
+        { id: 'personal',   label: 'Personal',    icon: 'users'            },
+      ]
+    : [
+        { id: 'calendario', label: 'Calendario',  icon: 'calendar'         },
+        { id: 'reportes',   label: 'Reportes',    icon: 'file-text'        },
+      ];
+  if (!tabs.find(t => t.id === state.activeTab)) state.activeTab = tabs[0].id;
+
+  return `
+    <header class="sticky top-0 z-40 dark:bg-brand-panel/80 dark:border-brand-border bg-white/90 border-gray-200 border-b backdrop-blur">
+      <div class="max-w-7xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between gap-3">
+        <div class="flex items-center gap-2.5">
+          <div class="w-9 h-9 rounded-xl bg-brand-blue text-white flex items-center justify-center"><i data-lucide="hard-hat" class="w-5 h-5"></i></div>
+          <div>
+            <p class="text-[10px] font-bold uppercase tracking-widest text-gray-500">Suite Unificada</p>
+            <h1 class="text-sm font-black uppercase tracking-tight">Solgram Control</h1>
+          </div>
+        </div>
+        <nav class="hidden md:flex items-center gap-1 text-xs">
+          ${tabs.map(t => `
+            <button onclick="setTab('${t.id}')" class="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border transition-all whitespace-nowrap ${
+              t.id === state.activeTab
+                ? 'dark:bg-brand-soft dark:border-brand-border bg-blue-50 border-blue-200 text-brand-blue dark:text-brand-amber font-black'
+                : 'border-transparent text-gray-500 hover:text-gray-300'
+            }">
+              <i data-lucide="${t.icon}" class="w-3.5 h-3.5"></i>
+              <span class="font-bold">${t.label}</span>
+            </button>
+          `).join('')}
+        </nav>
+        <div class="flex items-center gap-2">
+          <span class="hidden sm:inline-flex px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border ${
+            isAdmin ? 'border-blue-500/40 text-brand-blue bg-blue-500/10' : 'border-amber-500/40 text-brand-amber bg-amber-500/10'
+          }">${isAdmin ? 'ADMIN' : 'SUPERVISOR'}</span>
+          <button onclick="toggleTheme()" class="p-2 rounded-xl border dark:border-brand-border border-gray-200 hover:bg-black/5 dark:hover:bg-white/10" title="Tema">
+            <i data-lucide="${state.theme === 'dark' ? 'sun' : 'moon'}" class="w-4 h-4"></i>
+          </button>
+          <button onclick="fullReset()" class="p-2 rounded-xl border dark:border-brand-border border-gray-200 hover:bg-amber-500/10 hover:text-amber-500" title="Restablecer demo">
+            <i data-lucide="rotate-ccw" class="w-4 h-4"></i>
+          </button>
+          <button onclick="logout()" class="p-2 rounded-xl border dark:border-brand-border border-gray-200 hover:bg-red-500/10 hover:text-red-500" title="Cerrar sesión">
+            <i data-lucide="log-out" class="w-4 h-4"></i>
+          </button>
+        </div>
+      </div>
+      <nav class="md:hidden flex items-center gap-1 overflow-x-auto px-3 pb-2 scroll text-[11px]">
+        ${tabs.map(t => `
+          <button onclick="setTab('${t.id}')" class="flex items-center gap-1 px-3 py-1.5 rounded-xl border whitespace-nowrap ${
+            t.id === state.activeTab
+              ? 'dark:bg-brand-soft dark:border-brand-border bg-blue-50 border-blue-200 text-brand-blue dark:text-brand-amber font-black'
+              : 'border-transparent text-gray-500'
+          }">
+            <i data-lucide="${t.icon}" class="w-3 h-3"></i>${t.label}
+          </button>`).join('')}
+      </nav>
+    </header>
+
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 py-6 fade-in">
+      ${renderTab()}
+    </main>
+
+    <button onclick="toggleChat()" class="fixed bottom-6 right-6 p-4 rounded-full shadow-2xl bg-brand-amber text-black hover:scale-110 transition-transform z-30" title="Solgramia">
+      <i data-lucide="message-square" class="w-6 h-6"></i>
+    </button>
+  `;
+}
+
+function renderTab() {
+  switch (state.activeTab) {
+    case 'resumen':    return renderResumen();
+    case 'gantt':      return renderGantt();
+    case 'calendario': return renderCalendario();
+    case 'reportes':   return renderReportes();
+    case 'personal':   return renderPersonal();
+    default:           return renderResumen();
+  }
+}
+
+/* ----- RESUMEN (Dashboard) ----- */
+function renderResumen() {
+  const onDuty   = state.workers.filter(w => w.estado === 'Turno').length;
+  const total    = state.workers.length;
+  const reportedHH = state.reports.reduce((s, r) => s + (r.hours || 0), 0);
+  const planHH   = state.schedule?.stats?.sumPlannedHrs || 0;
+  const totalHH  = state.schedule?.stats?.sumTotalHrs   || 1;
+  const avance   = Math.round((reportedHH / totalHH) * 100);
+  const groups   = getWorkingGroups(todayStr()).join(' y ');
+
+  const kpis = [
+    { label: 'HH Planificadas', value: fmtMoney(planHH),       sub: 'Plan acumulado',         icon: 'clock',       tone: 'blue'   },
+    { label: 'HH Ejecutadas',   value: fmtMoney(reportedHH),   sub: 'Reportadas a la fecha',  icon: 'activity',    tone: 'amber'  },
+    { label: 'Avance Físico',   value: avance + '%',           sub: 'Sobre HH totales',       icon: 'trending-up', tone: 'green'  },
+    { label: 'Personal Turno',  value: onDuty + '/' + total,   sub: 'Hoy · grupos ' + groups, icon: 'users',       tone: 'purple' },
+  ];
+
+  const recent = state.reports.slice(0, 6);
+
+  const curve = `
+    <svg viewBox="0 0 600 200" class="w-full h-48">
+      <defs>
+        <linearGradient id="g1" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stop-color="#0f6fff" stop-opacity=".3"/><stop offset="100%" stop-color="#0f6fff" stop-opacity="0"/></linearGradient>
+        <linearGradient id="g2" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stop-color="#ffb703" stop-opacity=".3"/><stop offset="100%" stop-color="#ffb703" stop-opacity="0"/></linearGradient>
+      </defs>
+      <g stroke="rgba(127,127,127,.2)" stroke-dasharray="3 3"><line x1="0" y1="50" x2="600" y2="50"/><line x1="0" y1="100" x2="600" y2="100"/><line x1="0" y1="150" x2="600" y2="150"/></g>
+      <path d="M0,180 C80,170 140,140 200,120 C260,100 320,80 380,60 C440,45 500,30 600,20 L600,200 L0,200 Z" fill="url(#g1)"/>
+      <path d="M0,180 C80,170 140,140 200,120 C260,100 320,80 380,60 C440,45 500,30 600,20" stroke="#0f6fff" stroke-width="2.5" fill="none"/>
+      <path d="M0,180 C80,175 140,160 200,135 C260,115 320,95 380,75 C440,60 500,45 600,35 L600,200 L0,200 Z" fill="url(#g2)"/>
+      <path d="M0,180 C80,175 140,160 200,135 C260,115 320,95 380,75 C440,60 500,45 600,35" stroke="#ffb703" stroke-width="2.5" fill="none" stroke-dasharray="6 4"/>
+    </svg>
+    <div class="flex items-center gap-4 text-[10px] font-bold uppercase tracking-widest text-gray-500 mt-2">
+      <span class="flex items-center gap-1.5"><span class="w-3 h-0.5 bg-brand-blue"></span>Real</span>
+      <span class="flex items-center gap-1.5"><span class="w-3 h-0.5 bg-brand-amber"></span>Planificado</span>
+    </div>`;
+
+  return `
+    <div>
+      <h2 class="text-2xl font-black uppercase tracking-tight mb-1">Resumen del Proyecto</h2>
+      <p class="text-xs text-gray-500 font-bold uppercase tracking-widest mb-5">${esc(state.schedule?.name || '—')} · ${state.reports.length} reportes</p>
+
+      <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+        ${kpis.map(k => `
+          <div class="p-5 rounded-2xl border dark:bg-brand-panel dark:border-brand-border bg-white border-gray-200 shadow-sm">
+            <div class="flex items-center justify-between mb-3">
+              <span class="text-[10px] font-black uppercase tracking-widest text-gray-500">${k.label}</span>
+              <div class="p-2 rounded-lg bg-${k.tone}-500/10 text-${k.tone}-500"><i data-lucide="${k.icon}" class="w-4 h-4"></i></div>
+            </div>
+            <p class="text-3xl font-black tabular-nums">${k.value}</p>
+            <p class="text-[11px] font-bold text-gray-500 mt-1">${k.sub}</p>
+          </div>
+        `).join('')}
+      </div>
+
+      <div class="grid lg:grid-cols-3 gap-6">
+        <div class="lg:col-span-2 p-5 rounded-2xl border dark:bg-brand-panel dark:border-brand-border bg-white border-gray-200">
+          <div class="flex items-center justify-between mb-3">
+            <h3 class="text-sm font-black uppercase tracking-widest">Curva de Avance</h3>
+            <span class="text-[10px] font-bold text-gray-500">${state.schedule ? fmtDate(state.schedule.startDate)+' → '+fmtDate(state.schedule.endDate) : '—'}</span>
+          </div>
+          ${curve}
+        </div>
+        <div class="p-5 rounded-2xl border dark:bg-brand-panel dark:border-brand-border bg-white border-gray-200">
+          <h3 class="text-sm font-black uppercase tracking-widest mb-3">Actividad reciente</h3>
+          <ul class="space-y-2">
+            ${recent.length === 0 ? '<li class="text-xs text-gray-500 italic">Aún no hay reportes.</li>' : recent.map(r => `
+              <li class="flex items-center justify-between gap-3 p-3 rounded-xl border dark:bg-brand-soft dark:border-brand-border bg-gray-50 border-gray-200">
+                <div class="min-w-0">
+                  <p class="text-sm font-bold truncate">${esc(r.tipo)}</p>
+                  <p class="text-[10px] text-gray-500 font-bold uppercase tracking-wider">${fmtDate(r.date)} · ${esc(r.sup)}</p>
+                </div>
+                <div class="flex items-center gap-2 shrink-0">
+                  <span class="text-xs font-black text-brand-amber">${r.hours} HH</span>
+                  ${statusBadge(r.status)}
+                </div>
+              </li>`).join('')}
+          </ul>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+/* ----- GANTT ----- */
+function renderGantt() {
+  if (!state.schedule) return `<div class="text-center py-20 text-gray-500">Sin cronograma cargado.</div>`;
+  const { tasks } = state.schedule;
+  const pStart = new Date(state.schedule.startDate);
+  const pEnd   = new Date(state.schedule.endDate);
+  const totalDays = Math.max(1, Math.round((pEnd - pStart) / 86400000));
+
+  const monthsSet = new Map();
+  let cur = new Date(pStart);
+  while (cur <= pEnd) {
+    const key = cur.getFullYear() + '-' + String(cur.getMonth()+1).padStart(2,'0');
+    if (!monthsSet.has(key)) monthsSet.set(key, cur.toLocaleDateString('es-CL',{month:'short',year:'2-digit'}));
+    cur.setMonth(cur.getMonth() + 1);
+  }
+  const months = [...monthsSet.values()];
+
+  const rows = tasks.map(t => {
+    const tStart = new Date((t.startDate||'').slice(0,10) + 'T12:00:00');
+    const tEnd   = new Date(((t.endDate||t.startDate)||'').slice(0,10) + 'T12:00:00');
+    const offset = Math.max(0, Math.round((tStart - pStart) / 86400000));
+    const span   = Math.max(1, Math.round((tEnd - tStart) / 86400000) + 1);
+    const left   = (offset / totalDays) * 100;
+    const width  = (span / totalDays) * 100;
+    const isAdmin = state.userRole === 'admin';
+
+    return `
+      <div class="grid grid-cols-[200px_1fr] items-center py-2 border-b dark:border-brand-border border-gray-200 gap-3">
+        <div class="pr-3 min-w-0">
+          <p class="text-xs font-bold truncate">${esc(t.name)}${t.isMilestone ? ' ◆' : ''}</p>
+          <p class="text-[9px] text-gray-500 font-bold uppercase tracking-widest truncate">${esc(t.wbsName)}</p>
+        </div>
+        <div class="relative h-7">
+          <div class="absolute inset-0 flex">${Array(months.length).fill('<div class="flex-1 border-l border-dashed dark:border-white/5 border-gray-200"></div>').join('')}</div>
+          <div onclick="${isAdmin ? `cycleTaskStatus('${t.id}')` : ''}" class="absolute top-1 h-5 rounded-md ${TASK_BAR[t.status]} flex items-center px-1.5 text-[9px] font-black uppercase text-white ${isAdmin ? 'cursor-pointer hover:brightness-110' : ''} truncate"
+               style="left:${left}%; width:${width}%; min-width:30px;"
+               title="${isAdmin ? 'Click para cambiar estado' : ''} · ${esc(STATUS_LABEL[t.status])}">
+            ${esc(STATUS_LABEL[t.status])}
+          </div>
+        </div>
+      </div>`;
+  }).join('');
+
+  return `
+    <div>
+      <div class="flex items-center justify-between mb-4 flex-wrap gap-3">
+        <div>
+          <h2 class="text-2xl font-black uppercase tracking-tight">Carta Gantt</h2>
+          <p class="text-xs text-gray-500 font-bold uppercase tracking-widest">${esc(state.schedule.fileName||'')} · ${tasks.length} actividades</p>
+        </div>
+        ${state.userRole === 'admin' ? `
+          <div class="flex gap-2">
+            <button onclick="exportSchedule()" class="px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest border dark:border-brand-border border-gray-200 hover:bg-black/5 dark:hover:bg-white/5 flex items-center gap-1.5">
+              <i data-lucide="download" class="w-3.5 h-3.5"></i> Exportar JSON
+            </button>
+            <label class="px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest border dark:border-brand-border border-gray-200 hover:bg-black/5 dark:hover:bg-white/5 flex items-center gap-1.5 cursor-pointer">
+              <i data-lucide="upload" class="w-3.5 h-3.5"></i> Importar JSON
+              <input type="file" accept=".json" class="hidden" onchange="importSchedule(event)">
+            </label>
+          </div>
+        ` : ''}
+      </div>
+
+      <div class="p-5 rounded-2xl border dark:bg-brand-panel dark:border-brand-border bg-white border-gray-200 overflow-x-auto">
+        <div class="grid grid-cols-[200px_1fr] mb-2 gap-3">
+          <div></div>
+          <div class="grid pl-1" style="grid-template-columns:repeat(${months.length},1fr);">
+            ${months.map(m => `<div class="text-[10px] font-black uppercase tracking-widest text-gray-500 border-l dark:border-brand-border border-gray-200 pl-2">${m}</div>`).join('')}
+          </div>
+        </div>
+        ${rows}
+      </div>
+
+      <p class="text-[10px] text-gray-500 mt-3 italic">${state.userRole === 'admin' ? 'Tip: haz click en una barra para alternar el estado de la tarea.' : 'Solo los administradores pueden modificar estados.'}</p>
+    </div>
+  `;
+}
+
+window.cycleTaskStatus = function(taskId) {
+  const t = state.schedule?.tasks.find(x => x.id === taskId);
+  if (!t) return;
+  const next = { TK_Pending: 'TK_Active', TK_Active: 'TK_Complete', TK_Complete: 'TK_Pending' }[t.status] || 'TK_Pending';
+  setTaskStatus(taskId, next);
+};
+
+window.exportSchedule = function() {
+  const blob = new Blob([JSON.stringify(state.schedule, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'solgram-schedule.json';
+  a.click();
+  URL.revokeObjectURL(a.href);
+};
+
+window.importSchedule = function(ev) {
+  const f = ev.target.files?.[0];
+  if (!f) return;
+  const r = new FileReader();
+  r.onload = () => {
+    try {
+      const obj = JSON.parse(r.result);
+      if (!obj.tasks) throw new Error('Archivo inválido (falta campo "tasks")');
+      state.schedule = obj;
+      persist(); render();
+      toast('Cronograma importado', 'success');
+    } catch (e) {
+      toast('Error: ' + e.message, 'error');
+    }
+  };
+  r.readAsText(f);
+};
+
+/* ----- CALENDARIO ----- */
+let calCurrent = new Date();
+window.calNav = function(delta) {
+  calCurrent.setMonth(calCurrent.getMonth() + delta);
+  render();
+};
+window.calToday = function() {
+  calCurrent = new Date();
+  render();
+};
+
+function renderCalendario() {
+  const y = calCurrent.getFullYear();
+  const m = calCurrent.getMonth();
+  const firstDay = new Date(y, m, 1).getDay();
+  const daysInMonth = new Date(y, m + 1, 0).getDate();
+  const cells = [];
+  for (let i = 0; i < firstDay; i++) cells.push(null);
+  for (let d = 1; d <= daysInMonth; d++) cells.push(d);
+  while (cells.length < 42) cells.push(null);
+
+  const monthNames = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+  const todayY = new Date().getFullYear(), todayM = new Date().getMonth(), todayD = new Date().getDate();
+
+  const grid = cells.map(d => {
+    if (!d) return `<div class="rounded-lg border min-h-[90px] p-1.5 border-transparent"></div>`;
+    const dateStr = `${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const dayTasks = tasksOnDate(dateStr);
+    const dayReports = reportsForDate(dateStr);
+    const isToday = (y === todayY && m === todayM && d === todayD);
+    const groups = getWorkingGroups(dateStr);
+    const isAGroup = groups.includes('A');
+    return `
+      <div onclick="openDay('${dateStr}')" class="cursor-pointer rounded-lg border min-h-[100px] p-1.5 flex flex-col gap-1 hover:scale-[1.02] active:scale-[0.98] transition-transform dark:bg-brand-soft dark:border-brand-border bg-white border-gray-200 ${isToday ? 'ring-2 ring-brand-amber' : ''}">
+        <div class="flex items-center justify-between">
+          <span class="text-[8px] font-black tracking-widest uppercase px-1 py-0.5 rounded leading-none ${isAGroup ? 'bg-amber-500/10 text-brand-amber' : 'bg-blue-500/10 text-blue-500'}">G-${groups.join('/')}</span>
+          <span class="text-[10px] font-black ${isToday ? 'bg-brand-amber text-black px-1.5 rounded-full' : 'text-gray-500'}">${d}</span>
+        </div>
+        ${dayTasks.slice(0, 3).map(t => {
+          const rep = reportForTaskOnDate(t.id, dateStr);
+          const cls = rep ? STATUS_CLASS[rep.status] : 'bg-gray-500/5 text-gray-500 border-gray-500/10';
+          return `<div class="text-[9px] font-bold px-1.5 py-0.5 rounded truncate border ${cls}" title="${esc(t.name)}">${esc(t.name)}${rep ? ' •' : ''}</div>`;
+        }).join('')}
+        ${dayTasks.length > 3 ? `<span class="text-[8px] text-gray-500 font-black">+${dayTasks.length-3} más</span>` : ''}
+      </div>`;
+  }).join('');
+
+  return `
+    <div>
+      <div class="flex items-center justify-between mb-4 flex-wrap gap-3">
+        <div>
+          <h2 class="text-2xl font-black uppercase tracking-tight">Calendario Operativo</h2>
+          <p class="text-xs text-amber-500 font-bold uppercase tracking-widest">${monthNames[m]} ${y} · Turnos ${state.shiftConfig.cycleDays}×${state.shiftConfig.cycleDays}</p>
+        </div>
+        <div class="flex gap-1">
+          <button onclick="calNav(-1)" class="p-2 rounded-xl border dark:border-brand-border border-gray-200"><i data-lucide="chevron-left" class="w-4 h-4"></i></button>
+          <button onclick="calToday()" class="px-3 py-2 rounded-xl border dark:border-brand-border border-gray-200 text-xs font-black uppercase">Hoy</button>
+          <button onclick="calNav(1)" class="p-2 rounded-xl border dark:border-brand-border border-gray-200"><i data-lucide="chevron-right" class="w-4 h-4"></i></button>
+        </div>
+      </div>
+
+      <div class="p-3 rounded-2xl border dark:bg-brand-panel dark:border-brand-border bg-white border-gray-200">
+        <div class="grid grid-cols-7 mb-1">
+          ${['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'].map(d => `<div class="text-center text-[10px] font-black uppercase tracking-widest text-gray-500 pb-1">${d}</div>`).join('')}
+        </div>
+        <div class="grid grid-cols-7 gap-1">${grid}</div>
+      </div>
+    </div>
+  `;
+}
+
+window.openDay = function(dateStr) {
+  const dayTasks = tasksOnDate(dateStr);
+  const dayReports = reportsForDate(dateStr);
+  const groups = getWorkingGroups(dateStr);
+
+  const taskItems = dayTasks.length === 0
+    ? '<p class="text-xs text-gray-500 italic">No hay actividades de cronograma para este día.</p>'
+    : dayTasks.map(t => {
+        const rep = reportForTaskOnDate(t.id, dateStr);
+        return `
+          <div class="p-3 rounded-xl border dark:border-brand-border border-gray-200 dark:bg-brand-soft bg-gray-50">
+            <div class="flex items-start justify-between gap-3">
+              <div class="min-w-0 flex-1">
+                <p class="text-sm font-bold">${esc(t.name)}</p>
+                <p class="text-[10px] text-gray-500 uppercase tracking-widest font-bold">${esc(t.wbsName)}</p>
+              </div>
+              <div class="flex flex-col items-end gap-1.5 shrink-0">
+                ${rep ? statusBadge(rep.status) : '<span class="text-[9px] text-gray-500 italic">sin reporte</span>'}
+                <button onclick="hideModal(); openReportForm('${dateStr}', '${t.id}', ${rep ? `'${rep.id}'` : 'null'})" class="px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest bg-brand-amber text-black hover:brightness-110 flex items-center gap-1">
+                  <i data-lucide="${rep ? 'pencil' : 'plus-circle'}" class="w-3 h-3"></i>${rep ? 'Editar' : 'Reportar'}
+                </button>
+              </div>
+            </div>
+          </div>`;
+      }).join('');
+
+  const otherReports = dayReports.filter(r => !r.taskId || !dayTasks.find(t => t.id === r.taskId));
+  const otherItems = otherReports.length === 0 ? '' : `
+    <div class="mt-4">
+      <h4 class="text-[10px] font-black uppercase tracking-widest text-gray-500 mb-2">Reportes adicionales</h4>
+      <div class="space-y-2">
+        ${otherReports.map(r => `
+          <div class="p-3 rounded-xl border dark:border-brand-border border-gray-200 flex items-center justify-between">
+            <div class="min-w-0">
+              <p class="text-sm font-bold truncate">${esc(r.tipo)}</p>
+              <p class="text-[10px] text-gray-500 uppercase">${esc(r.sup)} · ${r.hours} HH</p>
+            </div>
+            <div class="flex gap-1.5 shrink-0">
+              ${statusBadge(r.status)}
+              <button onclick="hideModal(); openReportForm('${dateStr}', null, '${r.id}')" class="p-1.5 rounded-lg border dark:border-brand-border border-gray-200 hover:bg-amber-500/10"><i data-lucide="pencil" class="w-3 h-3"></i></button>
+              ${state.userRole === 'admin' ? `<button onclick="confirmDeleteReport('${r.id}', true)" class="p-1.5 rounded-lg border dark:border-brand-border border-gray-200 hover:bg-red-500/10"><i data-lucide="trash-2" class="w-3 h-3"></i></button>` : ''}
+            </div>
+          </div>`).join('')}
+      </div>
+    </div>`;
+
+  showModal(`
+    <div class="w-full max-w-2xl max-h-[85vh] flex flex-col rounded-2xl border shadow-2xl overflow-hidden dark:bg-brand-panel dark:border-brand-border bg-white border-gray-200">
+      <div class="px-6 py-4 border-b dark:border-brand-border border-gray-200 flex items-center justify-between gap-3">
+        <div>
+          <p class="text-[10px] font-black uppercase tracking-widest text-brand-amber">Detalle del día · Grupo activo: ${groups.join(' / ')}</p>
+          <h3 class="text-lg font-black uppercase tracking-tight">${fmtDate(dateStr)}</h3>
+        </div>
+        <button onclick="hideModal()" class="p-2 rounded-xl hover:bg-black/5 dark:hover:bg-white/10"><i data-lucide="x" class="w-5 h-5"></i></button>
+      </div>
+      <div class="flex-1 overflow-y-auto p-5 space-y-3 scroll">
+        ${taskItems}
+        ${otherItems}
+      </div>
+      <div class="px-5 py-3 border-t dark:border-brand-border border-gray-200 flex justify-end">
+        <button onclick="hideModal(); openReportForm('${dateStr}', null, null)" class="px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest bg-brand-blue text-white flex items-center gap-1.5">
+          <i data-lucide="plus-circle" class="w-3.5 h-3.5"></i> Nuevo reporte manual
+        </button>
+      </div>
+    </div>
+  `);
+};
+
+window.confirmDeleteReport = function(id, fromDay = false) {
+  if (confirm('¿Eliminar este reporte?')) deleteReport(id);
+};
+
+/* ----- REPORTES ----- */
+function renderReportes() {
+  const sorted = [...state.reports].sort((a,b) => b.date.localeCompare(a.date));
+  return `
+    <div>
+      <div class="flex items-center justify-between mb-4 flex-wrap gap-3">
+        <div>
+          <h2 class="text-2xl font-black uppercase tracking-tight">Reportes Diarios</h2>
+          <p class="text-xs text-gray-500 font-bold uppercase tracking-widest">${state.reports.length} reportes · totales ${fmtMoney(state.reports.reduce((s,r)=>s+(r.hours||0),0))} HH</p>
+        </div>
+        <div class="flex gap-2">
+          <input type="text" id="report-search" placeholder="Filtrar..." oninput="filterReports(this.value)" class="px-3 py-2 rounded-xl border text-xs dark:bg-brand-soft dark:border-brand-border dark:text-white bg-white border-gray-200">
+          <button onclick="openReportForm(null,null,null)" class="px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest bg-brand-amber text-black flex items-center gap-1.5">
+            <i data-lucide="plus-circle" class="w-3.5 h-3.5"></i> Nuevo
+          </button>
+        </div>
+      </div>
+
+      <div class="rounded-2xl border dark:bg-brand-panel dark:border-brand-border bg-white border-gray-200 overflow-x-auto">
+        <table class="w-full text-left text-sm">
+          <thead class="text-[10px] font-black uppercase tracking-widest text-gray-500 border-b dark:border-brand-border border-gray-200">
+            <tr>
+              <th class="px-3 py-2.5">Fecha</th>
+              <th class="px-3 py-2.5">Supervisor</th>
+              <th class="px-3 py-2.5">Labor</th>
+              <th class="px-3 py-2.5 hidden md:table-cell">WBS</th>
+              <th class="px-3 py-2.5">HH</th>
+              <th class="px-3 py-2.5">Estado</th>
+              <th class="px-3 py-2.5"></th>
+            </tr>
+          </thead>
+          <tbody id="reports-tbody">
+            ${sorted.map(r => reportRow(r)).join('') || '<tr><td colspan="7" class="text-center py-10 text-gray-500 italic text-xs">Sin reportes.</td></tr>'}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  `;
+}
+function reportRow(r) {
+  const isAdmin = state.userRole === 'admin';
+  return `
+    <tr class="border-b dark:border-brand-border border-gray-200 hover:bg-black/5 dark:hover:bg-white/5">
+      <td class="px-3 py-3 font-bold text-xs whitespace-nowrap">${fmtDate(r.date)}</td>
+      <td class="px-3 py-3 text-xs">${esc(r.sup)}</td>
+      <td class="px-3 py-3 font-bold">${esc(r.tipo)}</td>
+      <td class="px-3 py-3 text-xs text-gray-500 hidden md:table-cell">${esc(r.wbs||'—')}</td>
+      <td class="px-3 py-3 text-xs font-black text-brand-amber tabular-nums">${r.hours}</td>
+      <td class="px-3 py-3">${statusBadge(r.status)}</td>
+      <td class="px-3 py-3 text-right whitespace-nowrap">
+        <button onclick="viewReport('${r.id}')" class="p-1.5 rounded-lg border dark:border-brand-border border-gray-200 hover:bg-blue-500/10" title="Ver"><i data-lucide="eye" class="w-3.5 h-3.5"></i></button>
+        <button onclick="openReportForm(null,null,'${r.id}')" class="p-1.5 rounded-lg border ml-1 dark:border-brand-border border-gray-200 hover:bg-amber-500/10" title="Editar"><i data-lucide="pencil" class="w-3.5 h-3.5"></i></button>
+        ${isAdmin ? `<button onclick="confirmDeleteReport('${r.id}')" class="p-1.5 rounded-lg border ml-1 dark:border-brand-border border-gray-200 hover:bg-red-500/10 hover:text-red-500" title="Eliminar"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>` : ''}
+      </td>
+    </tr>`;
+}
+window.filterReports = function(q) {
+  const ql = q.trim().toLowerCase();
+  const tbody = $('reports-tbody');
+  if (!tbody) return;
+  const filtered = state.reports
+    .filter(r => !ql || JSON.stringify(r).toLowerCase().includes(ql))
+    .sort((a,b) => b.date.localeCompare(a.date));
+  tbody.innerHTML = filtered.map(r => reportRow(r)).join('') || '<tr><td colspan="7" class="text-center py-10 text-gray-500 italic text-xs">Sin coincidencias.</td></tr>';
+  lucide.createIcons();
+};
+window.viewReport = function(id) {
+  const r = state.reports.find(x => x.id === id);
+  if (!r) return;
+  showModal(`
+    <div class="w-full max-w-xl max-h-[85vh] flex flex-col rounded-2xl border shadow-2xl overflow-hidden dark:bg-brand-panel dark:border-brand-border bg-white border-gray-200">
+      <div class="px-6 py-4 border-b dark:border-brand-border border-gray-200 flex items-center justify-between">
+        <div>
+          <p class="text-[10px] font-black uppercase tracking-widest text-brand-amber">Reporte · ${esc(r.wbs||'—')}</p>
+          <h3 class="text-lg font-black tracking-tight">${esc(r.tipo)}</h3>
+        </div>
+        <button onclick="hideModal()" class="p-2 rounded-xl hover:bg-black/5 dark:hover:bg-white/10"><i data-lucide="x" class="w-5 h-5"></i></button>
+      </div>
+      <div class="flex-1 overflow-y-auto p-5 space-y-4 text-sm scroll">
+        <div class="grid grid-cols-2 gap-3">
+          <div class="p-3 rounded-xl border dark:border-brand-border border-gray-200">
+            <p class="text-[9px] font-black uppercase text-gray-500">Fecha</p>
+            <p class="font-bold mt-0.5">${fmtDate(r.date)}</p>
+          </div>
+          <div class="p-3 rounded-xl border dark:border-brand-border border-gray-200">
+            <p class="text-[9px] font-black uppercase text-gray-500">Supervisor</p>
+            <p class="font-bold mt-0.5">${esc(r.sup||'—')}</p>
+          </div>
+          <div class="p-3 rounded-xl border dark:border-brand-border border-gray-200">
+            <p class="text-[9px] font-black uppercase text-gray-500">HH Total</p>
+            <p class="font-black text-brand-amber mt-0.5">${r.hours}</p>
+          </div>
+          <div class="p-3 rounded-xl border dark:border-brand-border border-gray-200">
+            <p class="text-[9px] font-black uppercase text-gray-500">Estado</p>
+            <p class="mt-0.5">${statusBadge(r.status)}</p>
+          </div>
+        </div>
+        ${r.detalle ? `<div class="p-4 rounded-xl border dark:border-brand-border border-gray-200 italic text-sm leading-snug">"${esc(r.detalle)}"</div>` : ''}
+        <div>
+          <p class="text-[10px] font-black uppercase text-gray-500 mb-2">Personal (${r.workersDetail?.length||r.workers?.length||0})</p>
+          <div class="grid grid-cols-2 gap-2">
+            ${(r.workersDetail||r.workers?.map(n=>({name:n,hours:0}))||[]).map(w => `
+              <div class="p-2 rounded-lg border dark:border-brand-border border-gray-200 flex justify-between text-xs">
+                <span class="font-bold truncate">${esc(w.name)}</span>
+                <span class="font-black text-brand-amber">${w.hours} h</span>
+              </div>`).join('')}
+          </div>
+        </div>
+        ${r.images?.length ? `
+          <div>
+            <p class="text-[10px] font-black uppercase text-gray-500 mb-2">Fotos (${r.images.length})</p>
+            <div class="grid grid-cols-3 gap-2">
+              ${r.images.map(src => `<img src="${src}" class="rounded-lg border dark:border-brand-border border-gray-200 aspect-video object-cover">`).join('')}
+            </div>
+          </div>` : ''}
+      </div>
+    </div>
+  `);
+};
+
+/* ----- REPORT FORM ----- */
+window.openReportForm = function(date, taskId, reportId) {
+  const existing = reportId ? state.reports.find(r => r.id === reportId) : null;
+  const task     = taskId ? state.schedule?.tasks.find(t => t.id === taskId) : null;
+  const today    = todayStr();
+  const init = existing || {
+    date: date || today,
+    sup: state.workers.find(w => /supervisor|capataz/i.test(w.cargo))?.nombre || '',
+    wbs: task?.wbsName || (state.schedule?.primaryLabors?.[0]?.name || ''),
+    tipo: task?.name || '',
+    detalle: '',
+    workers: [],
+    workersDetail: [],
+    hours: 0,
+    status: 'ejecucion',
+    taskId: taskId || null,
+    images: [],
+  };
+
+  const supervisores = state.workers.filter(w => /supervisor|capataz|jefe/i.test(w.cargo)).map(w => w.nombre);
+  const wbsNames = state.schedule?.primaryLabors?.map(p => p.name) || ['General'];
+
+  const groupsForDate = init.date ? getWorkingGroups(init.date) : ['A','C'];
+  const onShiftWorkers = state.workers.filter(w => w.estado === 'Turno' && groupsForDate.includes(w.grupo));
+
+  showModal(`
+    <form id="report-form" onsubmit="submitReport(event, ${reportId ? `'${reportId}'` : 'null'})" class="w-full max-w-2xl max-h-[90vh] flex flex-col rounded-2xl border shadow-2xl overflow-hidden dark:bg-brand-panel dark:border-brand-border bg-white border-gray-200">
+      <div class="px-6 py-4 border-b dark:border-brand-border border-gray-200 flex items-center justify-between">
+        <div>
+          <p class="text-[10px] font-black uppercase tracking-widest text-brand-amber">${reportId ? 'Editar' : 'Crear'} reporte diario</p>
+          <h3 class="text-lg font-black tracking-tight">${esc(init.tipo || 'Nuevo reporte')}</h3>
+        </div>
+        <button type="button" onclick="hideModal()" class="p-2 rounded-xl hover:bg-black/5 dark:hover:bg-white/10"><i data-lucide="x" class="w-5 h-5"></i></button>
+      </div>
+
+      <div class="flex-1 overflow-y-auto p-5 space-y-4 scroll">
+        <div class="grid sm:grid-cols-2 gap-3">
+          <label class="block">
+            <span class="text-[10px] font-black uppercase tracking-widest text-gray-500">Fecha</span>
+            <input name="date" type="date" required value="${init.date}" class="mt-1 w-full rounded-xl border p-2.5 text-sm dark:bg-brand-soft dark:border-brand-border bg-white border-gray-200">
+          </label>
+          <label class="block">
+            <span class="text-[10px] font-black uppercase tracking-widest text-gray-500">Supervisor</span>
+            <select name="sup" required class="mt-1 w-full rounded-xl border p-2.5 text-sm dark:bg-brand-soft dark:border-brand-border bg-white border-gray-200">
+              <option value="">— Seleccionar —</option>
+              ${supervisores.map(s => `<option ${s === init.sup ? 'selected':''}>${esc(s)}</option>`).join('')}
+            </select>
+          </label>
+          <label class="block">
+            <span class="text-[10px] font-black uppercase tracking-widest text-gray-500">WBS</span>
+            <select name="wbs" class="mt-1 w-full rounded-xl border p-2.5 text-sm dark:bg-brand-soft dark:border-brand-border bg-white border-gray-200">
+              ${wbsNames.map(n => `<option ${n === init.wbs ? 'selected':''}>${esc(n)}</option>`).join('')}
+            </select>
+          </label>
+          <label class="block">
+            <span class="text-[10px] font-black uppercase tracking-widest text-gray-500">Estado</span>
+            <select name="status" class="mt-1 w-full rounded-xl border p-2.5 text-sm dark:bg-brand-soft dark:border-brand-border bg-white border-gray-200">
+              <option value="pendiente" ${init.status==='pendiente'?'selected':''}>Pendiente</option>
+              <option value="ejecucion" ${init.status==='ejecucion'?'selected':''}>En ejecución</option>
+              <option value="listo"     ${init.status==='listo'    ?'selected':''}>Listo</option>
+            </select>
+          </label>
+          <label class="block sm:col-span-2">
+            <span class="text-[10px] font-black uppercase tracking-widest text-gray-500">Labor (descripción)</span>
+            <input name="tipo" required value="${esc(init.tipo)}" class="mt-1 w-full rounded-xl border p-2.5 text-sm dark:bg-brand-soft dark:border-brand-border bg-white border-gray-200">
+          </label>
+          <label class="block sm:col-span-2">
+            <span class="text-[10px] font-black uppercase tracking-widest text-gray-500">Observaciones</span>
+            <textarea name="detalle" rows="3" class="mt-1 w-full rounded-xl border p-2.5 text-sm resize-none dark:bg-brand-soft dark:border-brand-border bg-white border-gray-200">${esc(init.detalle)}</textarea>
+          </label>
+        </div>
+
+        <div>
+          <p class="text-[10px] font-black uppercase tracking-widest text-gray-500 mb-2">Personal en turno (${groupsForDate.join('/')}) — marca y asigna horas</p>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-56 overflow-y-auto pr-1 scroll">
+            ${onShiftWorkers.length === 0 ? '<p class="text-xs text-gray-500 italic col-span-2 p-2">No hay personal en turno hoy.</p>' : onShiftWorkers.map(w => {
+              const wd = init.workersDetail?.find(x => x.name === w.nombre);
+              const hours = wd ? wd.hours : 12;
+              const checked = !!wd;
+              return `
+                <label class="flex items-center justify-between gap-2 p-2 rounded-lg border dark:border-brand-border border-gray-200 dark:bg-brand-soft bg-gray-50">
+                  <span class="flex items-center gap-2 min-w-0">
+                    <input type="checkbox" name="worker-${esc(w.nombre)}" ${checked ? 'checked' : ''} class="accent-blue-500">
+                    <span class="text-xs font-bold truncate">${esc(w.nombre)}</span>
+                    <span class="text-[9px] text-gray-500 uppercase">G${esc(w.grupo)}</span>
+                  </span>
+                  <input type="number" min="0" max="24" step="0.5" value="${hours}" name="hours-${esc(w.nombre)}" class="w-14 text-center rounded border px-1 py-0.5 text-xs font-bold dark:bg-brand-bg dark:border-brand-border bg-white border-gray-300">
+                </label>`;
+            }).join('')}
+          </div>
+        </div>
+
+        <label class="block">
+          <span class="text-[10px] font-black uppercase tracking-widest text-gray-500">Adjuntar fotos (opcional)</span>
+          <input name="images" type="file" accept="image/*" multiple class="mt-1 w-full text-xs">
+        </label>
+      </div>
+
+      <div class="px-5 py-3 border-t dark:border-brand-border border-gray-200 flex justify-between gap-2">
+        ${reportId && state.userRole === 'admin' ? `
+          <button type="button" onclick="if(confirm('¿Eliminar este reporte?')){deleteReport('${reportId}'); hideModal();}" class="px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest border dark:border-brand-border border-gray-200 text-red-500 hover:bg-red-500/10">Eliminar</button>
+        ` : '<span></span>'}
+        <div class="flex gap-2">
+          <button type="button" onclick="hideModal()" class="px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest border dark:border-brand-border border-gray-200">Cancelar</button>
+          <button type="submit" class="px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest bg-brand-amber text-black hover:brightness-110">Guardar</button>
+        </div>
+      </div>
+    </form>
+  `);
+};
+
+window.submitReport = async function(ev, reportId) {
+  ev.preventDefault();
+  const f = ev.target;
+  const fd = new FormData(f);
+
+  const detail = [];
+  state.workers.forEach(w => {
+    if (fd.get(`worker-${w.nombre}`) === 'on') {
+      const h = parseFloat(fd.get(`hours-${w.nombre}`)) || 0;
+      detail.push({ name: w.nombre, hours: h });
+    }
+  });
+
+  const images = [];
+  const fileInput = f.querySelector('input[type=file][name=images]');
+  if (fileInput?.files?.length) {
+    for (const file of fileInput.files) {
+      if (file.size > 2 * 1024 * 1024) { toast('Imagen ' + file.name + ' supera 2 MB, omitida', 'error'); continue; }
+      const dataUrl = await new Promise(res => { const r = new FileReader(); r.onload = () => res(r.result); r.readAsDataURL(file); });
+      images.push(dataUrl);
+    }
+  }
+
+  const report = {
+    date: fd.get('date'),
+    sup:  fd.get('sup'),
+    wbs:  fd.get('wbs'),
+    tipo: fd.get('tipo'),
+    detalle: fd.get('detalle'),
+    status: fd.get('status'),
+    workers: detail.map(d => d.name),
+    workersDetail: detail,
+    hours: detail.reduce((s, d) => s + d.hours, 0),
+  };
+
+  if (reportId) {
+    const existing = state.reports.find(r => r.id === reportId);
+    const merged = { ...existing, ...report };
+    if (images.length) merged.images = [...(existing?.images || []), ...images];
+    updateReport(reportId, merged);
+  } else {
+    addReport({ ...report, images });
+  }
+  hideModal();
+};
+
+/* ----- PERSONAL ----- */
+function renderPersonal() {
+  const grouped = {};
+  state.workers.forEach(w => {
+    grouped[w.grupo] = grouped[w.grupo] || { total: 0, onDuty: 0 };
+    grouped[w.grupo].total++;
+    if (w.estado === 'Turno') grouped[w.grupo].onDuty++;
+  });
+  const groupCards = Object.entries(grouped).sort().map(([g, info]) => `
+    <div class="p-4 rounded-2xl border dark:bg-brand-panel dark:border-brand-border bg-white border-gray-200">
+      <p class="text-[10px] font-black uppercase tracking-widest text-gray-500">Grupo ${esc(g)}</p>
+      <p class="text-2xl font-black tabular-nums mt-1">${info.onDuty} / ${info.total}</p>
+      <p class="text-[10px] font-bold text-gray-500">en turno / total</p>
+    </div>`).join('');
+
+  const stateClass = (s) =>
+    s === 'Turno'    ? 'bg-green-500/10 text-green-500 border-green-500/20' :
+    s === 'Descanso' ? 'bg-blue-500/10 text-blue-500 border-blue-500/20' :
+    s === 'Licencia' ? 'bg-amber-500/10 text-brand-amber border-amber-500/20' :
+                       'bg-gray-500/10 text-gray-500 border-gray-500/20';
+
+  const isAdmin = state.userRole === 'admin';
+  const rows = [...state.workers].sort((a,b) => a.nombre.localeCompare(b.nombre)).map(w => `
+    <tr class="border-b dark:border-brand-border border-gray-200 hover:bg-black/5 dark:hover:bg-white/5">
+      <td class="px-3 py-3 font-bold text-sm">${esc(w.nombre)}</td>
+      <td class="px-3 py-3 text-xs text-gray-500 font-mono hidden md:table-cell">${esc(w.rut)}</td>
+      <td class="px-3 py-3 text-xs">${esc(w.cargo)}</td>
+      <td class="px-3 py-3 text-xs"><span class="font-black px-2 py-0.5 rounded-md bg-gray-500/10 border dark:border-brand-border border-gray-200">${esc(w.grupo)}</span></td>
+      <td class="px-3 py-3"><span class="px-2 py-0.5 rounded-full text-[9px] font-black uppercase border ${stateClass(w.estado)}">${esc(w.estado)}</span></td>
+      <td class="px-3 py-3 text-xs font-black text-brand-amber tabular-nums">${w.hh}</td>
+      <td class="px-3 py-3 text-right whitespace-nowrap">
+        ${isAdmin ? `
+          <button onclick="openWorkerForm('${w.id}')" class="p-1.5 rounded-lg border dark:border-brand-border border-gray-200 hover:bg-amber-500/10"><i data-lucide="pencil" class="w-3.5 h-3.5"></i></button>
+          <button onclick="if(confirm('¿Eliminar a ${esc(w.nombre)}?'))deleteWorker('${w.id}')" class="p-1.5 rounded-lg border ml-1 dark:border-brand-border border-gray-200 hover:bg-red-500/10 hover:text-red-500"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>
+        ` : ''}
+      </td>
+    </tr>`).join('');
+
+  return `
+    <div>
+      <div class="flex items-center justify-between mb-4 flex-wrap gap-3">
+        <div>
+          <h2 class="text-2xl font-black uppercase tracking-tight">Control de Personal</h2>
+          <p class="text-xs text-gray-500 font-bold uppercase tracking-widest">${state.workers.length} trabajadores · turnos ${state.shiftConfig.cycleDays}×${state.shiftConfig.cycleDays}</p>
+        </div>
+        ${isAdmin ? `
+          <div class="flex gap-2">
+            <label class="px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest border dark:border-brand-border border-gray-200 hover:bg-black/5 dark:hover:bg-white/5 flex items-center gap-1.5 cursor-pointer">
+              <i data-lucide="upload" class="w-3.5 h-3.5"></i> Importar Excel
+              <input type="file" accept=".xlsx,.xls,.csv" class="hidden" onchange="importPersonnel(event)">
+            </label>
+            <button onclick="openWorkerForm(null)" class="px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest bg-brand-blue text-white flex items-center gap-1.5">
+              <i data-lucide="plus-circle" class="w-3.5 h-3.5"></i> Nuevo
+            </button>
+          </div>
+        ` : ''}
+      </div>
+
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">${groupCards || '<p class="text-xs text-gray-500 italic col-span-4">Sin personal cargado.</p>'}</div>
+
+      <div class="rounded-2xl border dark:bg-brand-panel dark:border-brand-border bg-white border-gray-200 overflow-x-auto">
+        <table class="w-full text-left">
+          <thead class="text-[10px] font-black uppercase tracking-widest text-gray-500 border-b dark:border-brand-border border-gray-200">
+            <tr>
+              <th class="px-3 py-2.5">Nombre</th>
+              <th class="px-3 py-2.5 hidden md:table-cell">RUT</th>
+              <th class="px-3 py-2.5">Cargo</th>
+              <th class="px-3 py-2.5">Grupo</th>
+              <th class="px-3 py-2.5">Estado</th>
+              <th class="px-3 py-2.5">HH</th>
+              <th class="px-3 py-2.5"></th>
+            </tr>
+          </thead>
+          <tbody>${rows || '<tr><td colspan="7" class="py-10 text-center text-gray-500 italic text-xs">Sin trabajadores.</td></tr>'}</tbody>
+        </table>
+      </div>
+    </div>
+  `;
+}
+
+window.openWorkerForm = function(id) {
+  const w = id ? state.workers.find(x => x.id === id) : null;
+  const init = w || { nombre:'', rut:'', cargo:'', grupo:'A', jornada:'14x14', estado:'Turno', hh:0, hhe:0 };
+
+  showModal(`
+    <form onsubmit="submitWorker(event, ${id ? `'${id}'` : 'null'})" class="w-full max-w-md rounded-2xl border shadow-2xl overflow-hidden dark:bg-brand-panel dark:border-brand-border bg-white border-gray-200">
+      <div class="px-6 py-4 border-b dark:border-brand-border border-gray-200 flex items-center justify-between">
+        <h3 class="text-lg font-black tracking-tight">${id ? 'Editar' : 'Nuevo'} trabajador</h3>
+        <button type="button" onclick="hideModal()" class="p-2 rounded-xl hover:bg-black/5 dark:hover:bg-white/10"><i data-lucide="x" class="w-5 h-5"></i></button>
+      </div>
+      <div class="p-5 space-y-3">
+        <div class="grid grid-cols-2 gap-3">
+          <label class="block col-span-2">
+            <span class="text-[10px] font-black uppercase text-gray-500">Nombre</span>
+            <input name="nombre" required value="${esc(init.nombre)}" class="mt-1 w-full rounded-xl border p-2.5 text-sm dark:bg-brand-soft dark:border-brand-border bg-white border-gray-200">
+          </label>
+          <label class="block">
+            <span class="text-[10px] font-black uppercase text-gray-500">RUT</span>
+            <input name="rut" value="${esc(init.rut)}" class="mt-1 w-full rounded-xl border p-2.5 text-sm dark:bg-brand-soft dark:border-brand-border bg-white border-gray-200">
+          </label>
+          <label class="block">
+            <span class="text-[10px] font-black uppercase text-gray-500">Cargo</span>
+            <input name="cargo" required value="${esc(init.cargo)}" class="mt-1 w-full rounded-xl border p-2.5 text-sm dark:bg-brand-soft dark:border-brand-border bg-white border-gray-200">
+          </label>
+          <label class="block">
+            <span class="text-[10px] font-black uppercase text-gray-500">Grupo</span>
+            <select name="grupo" class="mt-1 w-full rounded-xl border p-2.5 text-sm dark:bg-brand-soft dark:border-brand-border bg-white border-gray-200">
+              ${['A','B','C','D'].map(g => `<option ${g===init.grupo?'selected':''}>${g}</option>`).join('')}
+            </select>
+          </label>
+          <label class="block">
+            <span class="text-[10px] font-black uppercase text-gray-500">Estado</span>
+            <select name="estado" class="mt-1 w-full rounded-xl border p-2.5 text-sm dark:bg-brand-soft dark:border-brand-border bg-white border-gray-200">
+              ${['Turno','Descanso','Licencia','Sin Turno'].map(s => `<option ${s===init.estado?'selected':''}>${s}</option>`).join('')}
+            </select>
+          </label>
+          <label class="block">
+            <span class="text-[10px] font-black uppercase text-gray-500">Jornada</span>
+            <input name="jornada" value="${esc(init.jornada)}" class="mt-1 w-full rounded-xl border p-2.5 text-sm dark:bg-brand-soft dark:border-brand-border bg-white border-gray-200">
+          </label>
+          <label class="block">
+            <span class="text-[10px] font-black uppercase text-gray-500">HH acum.</span>
+            <input name="hh" type="number" min="0" value="${init.hh}" class="mt-1 w-full rounded-xl border p-2.5 text-sm dark:bg-brand-soft dark:border-brand-border bg-white border-gray-200">
+          </label>
+          <label class="block">
+            <span class="text-[10px] font-black uppercase text-gray-500">HHE acum.</span>
+            <input name="hhe" type="number" min="0" value="${init.hhe}" class="mt-1 w-full rounded-xl border p-2.5 text-sm dark:bg-brand-soft dark:border-brand-border bg-white border-gray-200">
+          </label>
+        </div>
+      </div>
+      <div class="px-5 py-3 border-t dark:border-brand-border border-gray-200 flex justify-end gap-2">
+        <button type="button" onclick="hideModal()" class="px-3 py-2 rounded-xl text-[10px] font-black uppercase border dark:border-brand-border border-gray-200">Cancelar</button>
+        <button type="submit" class="px-4 py-2 rounded-xl text-[10px] font-black uppercase bg-brand-blue text-white">Guardar</button>
+      </div>
+    </form>
+  `);
+};
+
+window.submitWorker = function(ev, id) {
+  ev.preventDefault();
+  const fd = new FormData(ev.target);
+  const w = {
+    nombre: fd.get('nombre'),
+    rut:    fd.get('rut'),
+    cargo:  fd.get('cargo'),
+    grupo:  fd.get('grupo'),
+    estado: fd.get('estado'),
+    jornada: fd.get('jornada'),
+    hh:  Number(fd.get('hh'))  || 0,
+    hhe: Number(fd.get('hhe')) || 0,
+  };
+  if (id) updateWorker(id, w); else addWorker(w);
+  hideModal();
+};
+
+window.importPersonnel = function(ev) {
+  const file = ev.target.files?.[0];
+  if (!file) return;
+  const r = new FileReader();
+  r.onload = (e) => {
+    try {
+      const data = new Uint8Array(e.target.result);
+      const wb = XLSX.read(data, { type: 'array' });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(ws, { defval: '' });
+      let added = 0;
+      rows.forEach(row => {
+        const nombre = row.nombre || row.Nombre || row.NOMBRE || row.name;
+        if (!nombre) return;
+        state.workers.push({
+          id: uid(),
+          nombre: String(nombre),
+          rut:    String(row.rut || row.RUT || ''),
+          cargo:  String(row.cargo || row.Cargo || row.CARGO || ''),
+          grupo:  String(row.grupo || row.Grupo || row.GRUPO || 'A').toUpperCase(),
+          jornada: String(row.jornada || row.Jornada || '14x14'),
+          estado: String(row.estado || row.Estado || 'Turno'),
+          hh:  Number(row.hh)  || 0,
+          hhe: Number(row.hhe) || 0,
+        });
+        added++;
+      });
+      persist(); render();
+      toast(`Importados ${added} trabajadores`, 'success');
+    } catch (err) {
+      toast('Error al leer Excel: ' + err.message, 'error');
+    }
+  };
+  r.readAsArrayBuffer(file);
+};
+
+/* ===================== MODAL ===================== */
+window.showModal = function(html) {
+  $('modal-root').innerHTML = `
+    <div class="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm fade-in" onclick="if(event.target===this) hideModal()">
+      <div class="pop-in">${html}</div>
+    </div>`;
+  lucide.createIcons();
+};
+window.hideModal = function() { $('modal-root').innerHTML = ''; };
+
+/* ===================== CHAT ===================== */
+window.toggleChat = function() {
+  const panel = $('chat-root');
+  if (panel.innerHTML) {
+    panel.innerHTML = '';
+  } else {
+    renderChat();
+  }
+};
+function renderChat() {
+  $('chat-root').innerHTML = `
+    <div class="fixed bottom-24 right-6 w-[360px] max-w-[calc(100vw-3rem)] h-[480px] rounded-2xl shadow-2xl flex flex-col overflow-hidden z-30 border pop-in dark:bg-[#11151c] dark:border-[#1f2a44] bg-white border-gray-200">
+      <div class="px-4 py-3 flex items-center justify-between border-b dark:bg-[#1a2440] dark:border-[#1f2a44] bg-gray-50 border-gray-200">
+        <div class="flex items-center gap-2">
+          <div class="p-1.5 rounded-lg bg-brand-amber text-black"><i data-lucide="bot" class="w-4 h-4"></i></div>
+          <div>
+            <h3 class="font-bold text-sm">Solgramia</h3>
+            <p class="text-[10px] text-gray-400">Asistente IA · DEMO</p>
+          </div>
+        </div>
+        <button onclick="toggleChat()" class="p-2 rounded-lg hover:bg-white/10"><i data-lucide="x" class="w-4 h-4"></i></button>
+      </div>
+      <div id="chat-messages" class="flex-1 overflow-y-auto p-4 space-y-3 scroll text-sm"></div>
+      <form onsubmit="sendChat(event)" class="p-3 border-t flex gap-2 items-end dark:border-[#1f2a44] border-gray-200">
+        <input id="chat-input" type="text" placeholder="Pregúntale a Solgramia..." class="flex-1 rounded-xl px-3 py-2 text-sm focus:outline-none dark:bg-[#1a2440] dark:text-white dark:border-[#1f2a44] border bg-gray-50 border-gray-200 text-gray-900">
+        <button type="submit" class="p-2 rounded-xl bg-brand-amber text-black"><i data-lucide="send" class="w-4 h-4"></i></button>
+      </form>
+    </div>`;
+  lucide.createIcons();
+  primeChat();
+}
+function chatBubble(role, text) {
+  const bubble = document.createElement('div');
+  bubble.className = 'flex ' + (role === 'user' ? 'justify-end' : 'justify-start');
+  const html = String(text).replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>').replace(/\n/g, '<br>');
+  bubble.innerHTML = `<div class="max-w-[85%] rounded-2xl px-3.5 py-2 text-[13px] leading-snug ${role === 'user' ? 'bg-brand-amber text-black' : 'dark:bg-[#1a2440] dark:text-gray-200 bg-gray-100 text-gray-800'}">${html}</div>`;
+  return bubble;
+}
+function primeChat() {
+  const c = $('chat-messages');
+  if (!c) return;
+  c.innerHTML = '';
+  c.appendChild(chatBubble('model', '¡Hola! Soy <strong>Solgramia</strong>. Te respondo con datos reales de tu navegador.\nPrueba: "avance del proyecto", "personal en turno", "últimos reportes", "pendientes".'));
+  state.chatHistory.forEach(m => c.appendChild(chatBubble(m.role, m.message)));
+  c.scrollTop = c.scrollHeight;
+}
+function smartReply(question) {
+  const q = question.toLowerCase();
+  const reportedHH = state.reports.reduce((s, r) => s + (r.hours || 0), 0);
+  const totalHH    = state.schedule?.stats?.sumTotalHrs || 1;
+  const avance     = Math.round((reportedHH / totalHH) * 100);
+  const onDuty     = state.workers.filter(w => w.estado === 'Turno').length;
+  const total      = state.workers.length;
+  const groups     = getWorkingGroups(todayStr()).join(' y ');
+
+  if (/avance|porcent|progres/.test(q)) {
+    return `El avance físico está en **${avance}%** sobre las ${fmtMoney(totalHH)} HH planificadas.\n\nReportadas hasta hoy: **${fmtMoney(reportedHH)} HH**.`;
+  }
+  if (/turno|grupo|personal|gente/.test(q)) {
+    return `Hoy hay **${onDuty} de ${total}** trabajadores en turno.\nGrupos activos: **${groups}**.\nLicencias activas: ${state.licenses.length}.`;
+  }
+  if (/reporte|últim|ultimo|hoy/.test(q)) {
+    const last = state.reports.slice(0, 4);
+    return last.length
+      ? 'Últimos reportes:\n\n' + last.map(r => `• ${r.tipo} — ${r.hours} HH (${STATUS_LABEL[r.status]}) — ${fmtDate(r.date)}`).join('\n')
+      : 'Aún no hay reportes diarios registrados.';
+  }
+  if (/pendient|por hacer|atras/.test(q)) {
+    const pend = state.schedule?.tasks.filter(t => t.status === 'TK_Pending') || [];
+    return pend.length
+      ? `Tareas pendientes (${pend.length}):\n\n` + pend.slice(0, 6).map(t => `• ${t.name} — ${t.wbsName}`).join('\n')
+      : 'No hay tareas pendientes en el cronograma.';
+  }
+  if (/horas extra|hhe|extras/.test(q)) {
+    const totalE = state.extraHours.reduce((s, e) => s + (e.hours || 0), 0);
+    return `Horas extra registradas: **${totalE} HHE** en ${state.extraHours.length} entradas.`;
+  }
+  if (/cronograma|gantt|fecha/.test(q)) {
+    return state.schedule
+      ? `Proyecto: **${state.schedule.name}**\nDuración: ${fmtDate(state.schedule.startDate)} → ${fmtDate(state.schedule.endDate)}\nActividades: ${state.schedule.tasks.length} (${state.schedule.stats.completed} completadas, ${state.schedule.stats.active} activas)`
+      : 'Aún no hay cronograma cargado.';
+  }
+  return `Preguntaste: "${esc(question)}".\n\nEn la demo respondo con tus datos del navegador. Prueba algunas de estas:\n• avance del proyecto\n• personal en turno\n• últimos reportes\n• tareas pendientes\n• horas extra\n• cronograma`;
+}
+window.sendChat = function(ev) {
+  ev.preventDefault();
+  const input = $('chat-input');
+  const text = input.value.trim();
+  if (!text) return;
+  input.value = '';
+
+  const c = $('chat-messages');
+  state.chatHistory.push({ role: 'user', message: text, timestamp: new Date().toISOString() });
+  c.appendChild(chatBubble('user', text));
+  c.scrollTop = c.scrollHeight;
+
+  const typing = document.createElement('div');
+  typing.className = 'flex justify-start';
+  typing.innerHTML = '<div class="rounded-2xl px-3.5 py-2 text-[13px] dark:bg-[#1a2440] bg-gray-100 typing">Pensando</div>';
+  c.appendChild(typing);
+  c.scrollTop = c.scrollHeight;
+
+  setTimeout(() => {
+    typing.remove();
+    const reply = smartReply(text);
+    state.chatHistory.push({ role: 'model', message: reply, timestamp: new Date().toISOString() });
+    persist();
+    c.appendChild(chatBubble('model', reply));
+    c.scrollTop = c.scrollHeight;
+  }, 600 + Math.random() * 400);
+};
+
+/* ===================== INIT ===================== */
+function init() {
+  if (!load()) seed();
+  render();
+}
+document.addEventListener('DOMContentLoaded', init);
+</script>
+</body>
+</html>
